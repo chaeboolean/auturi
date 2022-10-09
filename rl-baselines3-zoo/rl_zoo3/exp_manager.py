@@ -208,6 +208,17 @@ class ExperimentManager:
                 **self._hyperparams,
             )
 
+        ##############################################################
+        #               AUTURI Insertion Point                       #
+        ##############################################################
+        from auturi.adapter.sb3 import wrap_sb3_OnPolicyAlgorithm
+        from auturi.tuner import AuturiTuner
+        
+        tuner = AuturiTuner(num_sim=env.num_envs)
+        wrap_sb3_OnPolicyAlgorithm(model, tuner)
+        assert hasattr(model, "auturi_engine")
+
+
         self._save_config(saved_hyperparams)
         return model, saved_hyperparams
 
@@ -554,6 +565,12 @@ class ExperimentManager:
 
         # On most env, SubprocVecEnv does not help and is quite memory hungry
         # therefore we use DummyVecEnv by default
+        
+        ##############################################################
+        #               AUTURI Insertion Point                       #
+        ##############################################################
+        from auturi.vector.ray_backend import RayParallelEnv
+        
         env = make_vec_env(
             env_id=self.env_name.gym_id,
             n_envs=n_envs,
@@ -561,7 +578,8 @@ class ExperimentManager:
             env_kwargs=self.env_kwargs,
             monitor_dir=log_dir,
             wrapper_class=self.env_wrapper,
-            vec_env_cls=self.vec_env_class,
+            #vec_env_cls=self.vec_env_class,
+            vec_env_cls = RayParallelEnv,
             vec_env_kwargs=self.vec_env_kwargs,
             monitor_kwargs=monitor_kwargs,
         )
