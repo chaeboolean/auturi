@@ -1,0 +1,16 @@
+[flake8]
+# /.flake8
+
+# black max_line_legnth 와 일치시켜준다
+max-line-length = 88
+# 무시할 에러 코드
+ignore =
+    # E402, module level import not at top of file
+    E402,
+    # E261, at least two spaces before inline comment
+    E261
+# linting 제외될 파일들
+exclude =
+        .git,
+        __pycache__
+count = True

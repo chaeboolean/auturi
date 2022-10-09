@@ -1,14 +1,17 @@
-import auturi.tuner.typing as types
+import auturi.typing.tuning as types
+
 
 class AuturiTuner(object):
     """
     Online tuning algorithm.
-    Input: , Output: 
+    Input: , Output:
     It records ...
 
 
     """
+
     def __init__(self, num_sim):
+        self.mode = "tuning"  # ["tuning" or "finishing"]
         self.recorder = None
         self.N = num_sim
 
@@ -19,4 +22,3 @@ class AuturiTuner(object):
             bs=self.N,
             numc=1,
         )
- 
