@@ -1,6 +1,7 @@
 """
 """
 
+from multiprocessing import dummy
 import time
 import unittest
 from dataclasses import dataclass
@@ -21,15 +22,20 @@ class DumbEnv(gym.Env):
         self.sleep = sleep
         self.init_ = init_
         self.action_space = gym.spaces.Discrete(10)
-        self.observation_space = gym.spaces.Discrete(10)
+        self.observation_space = gym.spaces.Box(low=-10, high=30, shape=(14,2), dtype=np.float32)
+        self.returns = self.observation_space.sample()
 
     def step(self, action):
-        time.sleep(self.sleep)
+        #Atime.sleep(self.sleep)
+        
         self.returns += action
-        return np.array(self.returns), -2.3, True, {}
+        #obs = np.copy(self.returns)
+        #print(f"Env({self.init_})", self.returns[0], action)
+
+        return self.returns, -2.3, False, {}
 
     def reset(self):
-        self.returns = self.init_
+        self.returns.fill(self.init_)
         return self.returns
 
     def seed(self, seed):
@@ -52,31 +58,32 @@ class TestRayParallelEnv(unittest.TestCase):
     def test_correctness(self):
         self._test_correctness(lambda: gym.make("HalfCheetah-v3"), 3)
 
-    def _test_correctness(self, env_fn, num_envs):
-        SEED = 10
-        ray_env = SHMParallelEnv([env_fn for _ in range(num_envs)])
-        dummy_env = DummyVecEnv([env_fn for _ in range(num_envs)])
+    # def _test_correctness(self, env_fn, num_envs):
+    #     SEED = 10
+    #     ray_env = SHMParallelEnv([env_fn for _ in range(num_envs)])
+    #     dummy_env = DummyVecEnv([env_fn for _ in range(num_envs)])
 
-        # ray_env.seed(seed_dict={i: SEED + i for i in range(num_envs)})
-        ray_env.seed(SEED)
-        dummy_env.seed(SEED)
+    #     # ray_env.seed(seed_dict={i: SEED + i for i in range(num_envs)})
+    #     ray_env.seed(SEED)
+    #     dummy_env.seed(SEED)
 
-        ray_env.reset()
-        dummy_env.reset()
+    #     ray_env.reset()
+    #     dummy_env.reset()
 
-        actions = np.stack([ray_env.action_space.sample() for _ in range(num_envs)])
+    #     #actions = np.stack([ray_env.action_space.sample() for _ in range(num_envs)])
+    #     actions = np.stack([2 for _ in range(num_envs)])
 
-        def compare_two(actions):
-            obs_1 = ray_env.step(actions)
-            # obs_1, _, _, _ = ray_env.step(actions)
-            obs_2, _, _, _ = dummy_env.step(actions)
-            print(np.array_equal(obs_1, obs_2), "((((((")
+    #     def compare_two(actions):
+    #         obs_1 = ray_env.step(actions)
+    #         # obs_1, _, _, _ = ray_env.step(actions)
+    #         obs_2, _, _, _ = dummy_env.step(actions)
+    #         print(np.array_equal(obs_1, obs_2), "((((((")
 
-            self.assertTrue(np.array_equal(obs_1, obs_2))
-            assert False
+    #         self.assertTrue(np.array_equal(obs_1, obs_2))
+    #         assert False
 
-        for idx in range(10):
-            compare_two(actions)
+    #     for idx in range(10):
+    #         compare_two(actions)
 
     # def test_poll_all(self):
     #     num_envs = 10
@@ -112,44 +119,68 @@ def timeoutcontext(timeout=None):
 
 def _test_correctness(env_fn, num_envs):
     SEED = 10
-    ray_env = SHMParallelEnv([env_fn for _ in range(num_envs)])
-    dummy_env = SubprocVecEnv([env_fn for _ in range(num_envs)])
+    ray_env = SHMParallelEnv([env_fn for i in range(num_envs)])
+    dummy_env = DummyVecEnv([env_fn for i in range(num_envs)])
 
     ray_env.seed(SEED)
     dummy_env.seed(SEED)
+    
+    print(111111)
 
     a = ray_env.reset()
-    ray_env.start_loop()
+    
     b = dummy_env.reset()
+    
+    print(2222)
 
-    print(f"SHM={a}\n\n DURMMY={b} \n\n")
 
-    actions = np.stack([ray_env.action_space.sample() for _ in range(num_envs)])
+    print(f"RESET!!! SHM={a}\n\n DURMMY={b} \n\n")
+
 
     def compare_two(actions):
-        # obs_1 = ray_env.step(actions)
+        #obs_1 = ray_env.step(actions)
         obs_1, _, _, _ = ray_env.step(actions)
         obs_2, _, _, _ = dummy_env.step(actions)
-        print(f"SHM={obs_1}\n\n DURMMY={obs_2} \n\n")
+        #print(f"SHM={obs_1}\n\n DURMMY={obs_2} \n\n")
         # print(obs_1.dtype, obs_2.dtype)
         if not np.array_equal(obs_1, obs_2):
-            # print(obs_1 - obs_2)
-            pass
+            print(obs_1 - obs_2)
+        #    pass
 
         # self.assertTrue(np.array_equal(obs_1, obs_2))
         # assert False
 
-    for idx in range(2):
-        compare_two(actions)
-        print(idx, " idx\n\n\n")
+    for _ in range(3):
+        ray_env.start_loop()
+        for idx in range(20):
+            actions = np.stack([dummy_env.action_space.sample() for _ in range(num_envs)])
+            compare_two(actions)
+            print(idx, " idx\n\n\n")
+            
+        ray_env.finish_loop()
+        
+    
+        
+    ray_env.close()
 
 
 if __name__ == "__main__":
     # unittest.main()
+    
     env_fn = lambda: gym.make("HalfCheetah-v3")
-    env_fn = lambda: gym.make("CartPole-v1")
-
-    _test_correctness(env_fn, 5)
+    #env_fn = lambda: gym.make("CartPole-v1")
+    def wrap_dumb(init):
+        return lambda: DumbEnv(init * 0.1, init)
+    
+    
+    #env = SubprocVecEnv([wrap_dumb(3), wrap_dumb(10)])
+    #env.reset()
+    
+    # for step in range(10):
+    #     obs, _, _, _ = env.step([2, 2])
+    #     print(f"{step}: => {obs}")
+    
+    _test_correctness(env_fn, 2)
     exit(0)
     num_envs = 2
     SEED = 64

@@ -19,11 +19,12 @@ class AuturiPolicy(metaclass=ABCMeta):
 
 class AuturiVectorPolicy:
     def __init__(self, num_policies: int, policy_fn: Callable):
+        self._setup()
+
         self.remote_policies = {
             i: self._create_policy(i, policy_fn) for i in range(num_policies)
         }
 
-        self._setup()
 
     def _create_policy(self, index, policy_fn):
         raise NotImplementedError

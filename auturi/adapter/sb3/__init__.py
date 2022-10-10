@@ -1,12 +1,14 @@
-import torch as th
-from stable_baselines3.common.on_policy_algorithm import OnPolicyAlgorithm
 
 from auturi.adapter.sb3.policy_adapter import SB3PolicyAdapter
 from auturi.engine import AuturiEngine
 from auturi.tuner import AuturiTuner
 from auturi.typing.simulator import AuturiVectorEnv
 from auturi.vector.ray_backend import RayVectorPolicies
+from auturi.vector.shm_backend import SHMVectorPolicies
 
+import torch as th
+from stable_baselines3.common.on_policy_algorithm import OnPolicyAlgorithm
+from stable_baselines3.common.utils import obs_as_tensor
 
 class SB3OnPolicyAlgorithmEngine(AuturiEngine):
     def _setup(self, rollout_buffer):
@@ -57,9 +59,11 @@ def wrap_sb3_OnPolicyAlgorithm(sb3_algo: OnPolicyAlgorithm, tuner: AuturiTuner):
             sde_sample_freq=sb3_algo.sde_sample_freq,
         )
 
-    vector_policy = RayVectorPolicies(
-        num_policies=1, model_fn=policy_creator  # tuner.max_policy
+    vector_policy = SHMVectorPolicies(
+        shm_config=sb3_algo.env.shm_configs,
+        num_policies=2, # tuner.max_policy
+        policy_fn=policy_creator,  
     )
 
     engine = AuturiEngine(sb3_algo.env, vector_policy, tuner)
-    sb3_algo.set_auturi_engine = engine
+    sb3_algo.set_auturi_engine(engine)

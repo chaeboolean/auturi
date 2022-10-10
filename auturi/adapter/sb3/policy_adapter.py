@@ -37,14 +37,19 @@ class SB3PolicyAdapter(AuturiPolicy):
         sde_sample_freq: int,
     ):
 
-        self.policy_model = model_fn()
+        policy_model = model_fn()
+        self.policy_model = policy_model.to("cuda:0")
+        print(type(self.policy_model), " (((((((( ", model_fn)
+        
 
+        self.policy_model.set_training_mode(False)
+        
         self.observation_space = observation_space
         self.action_space = action_space
         self.use_sde = use_sde
         self.sde_sample_freq = sde_sample_freq
 
-        self.device = device  # TODO ????
+        self.device = "cuda:0"  # TODO ????
 
     # Called at the beginning of collection loop
     def reset(self):
@@ -69,22 +74,25 @@ class SB3PolicyAdapter(AuturiPolicy):
         )
 
     def _to_sample_noise(self, n_steps):
+        return True
         return (
             self.use_sde
             and self.sde_sample_freq > 0
             and n_steps % self.sde_sample_freq == 0
         )
 
-    def compute_actions(self, env_obs, env_rewards, env_dones, env_infos, n_steps):
+    def compute_actions(self, env_obs, env_rewards=None, env_dones=None, env_infos=None, n_steps=3):
         # Sample a new noise matrix
+        
         if self._to_sample_noise(n_steps):
-            self.policy.reset_noise(len(env_obs))
+            self.policy_model.reset_noise(len(env_obs))
 
         with th.no_grad():
             # Convert to pytorch tensor or to TensorDict
             obs_tensor = obs_as_tensor(env_obs, self.device)
-            # print(f"\nobs tensro={type(obs_tensor)}, {obs_tensor.shape}\n")
-            actions, values, log_probs = self.policy(obs_tensor)
+            print("obs_tensor=>", obs_tensor.device)
+            actions, values, log_probs = self.policy_model(obs_tensor)
+        
         actions = actions.cpu().numpy()
 
         # Rescale and perform action
@@ -120,11 +128,11 @@ class SB3PolicyAdapter(AuturiPolicy):
                 and self.last_env_infos[idx].get("terminal_observation") is not None
                 and self.last_env_infos[idx].get("TimeLimit.truncated", False)
             ):
-                terminal_obs = self.policy.obs_to_tensor(
+                terminal_obs = self.policy_model.obs_to_tensor(
                     self.last_env_infos[idx]["terminal_observation"]
                 )[0]
                 with th.no_grad():
-                    terminal_value = self.policy.predict_values(terminal_obs)[0]
+                    terminal_value = self.policy_model.predict_values(terminal_obs)[0]
                 self.last_env_rewards[idx] += self.gamma * terminal_value
 
         if not hasattr(self, "_last_episode_starts"):

@@ -14,23 +14,47 @@ def align(num_envs, dummy_arr):
     return dummy_arr.nbytes * num_envs
 
 
-class SHMProcWrapper(mp.Process):
-    def _get_np_shm(self, ident_):
-        _buffer = shm.SharedMemory(self.configs[f"{ident_}_buffer"])
-        np_buffer = np.ndarray(
-            self.configs[f"{ident_}_shape"],
-            dtype=self.configs[f"{ident_}_dtype"],
-            buffer=_buffer.buf,
-        )
-        return _buffer, np_buffer
+def _get_np_shm(ident_, configs):
+    _buffer = shm.SharedMemory(configs[f"{ident_}_buffer"])
+    np_buffer = np.ndarray(
+        configs[f"{ident_}_shape"],
+        dtype=configs[f"{ident_}_dtype"],
+        buffer=_buffer.buf,
+    )
+    return _buffer, np_buffer
 
+
+
+def _create_shm_from_space(sample_, name, shm_configs, num_envs):
+    sample_ = sample_ if hasattr(sample_, "shape") else np.array(sample_)
+    # shape_ = sample_.shape if hasattr(sample_, "shape") else ()
+    shape_ = (num_envs,) + sample_.shape
+    # dtype_= sample_.shape if hasattr(sample_, "shape") else ()
+    buffer_ = shm.SharedMemory(create=True, size=align(num_envs, sample_))
+    np_buffer_ = np.ndarray(shape_, dtype=sample_.dtype, buffer=buffer_.buf)
+
+    shm_configs[f"{name}_shape"] = shape_
+    shm_configs[f"{name}_dtype"] = sample_.dtype
+    shm_configs[f"{name}_buffer"] = buffer_.name
+    return buffer_, np_buffer_
+
+
+class SHMProcWrapper(mp.Process):
     def set_shm_buffer(self, shm_configs):
         self.configs = shm_configs
-
-        self._obs, self.obs_buffer = self._get_np_shm("obs")
-        self._action, self.action_buffer = self._get_np_shm("action")
-        self._command, self.command_buffer = self._get_np_shm("command")
-
+        
+        identifiers = set([key.split("_")[0] for key in shm_configs])
+        print(identifiers)
+        for ident in identifiers:
+            raw_buf, np_buffer = _get_np_shm(ident, shm_configs)
+            setattr(self, f"_{ident}", raw_buf)
+            setattr(self, f"{ident}_buffer", np_buffer)
+            
+            
+        # self._obs, self.obs_buffer = _get_np_shm("obs", shm_configs)
+        # self._action, self.action_buffer = _get_np_shm("action", shm_configs)
+        # self._command, self.command_buffer = _get_np_shm("command", shm_configs)
+        
 
 class WaitingQueue:
     """Imitate circular queue, but minimizing redundant numpy copy or traverse array."""
