@@ -33,7 +33,7 @@ class AuturiEngine:
         """Called at the beginning of the collection loop."""
         pass
 
-    def run(self):
+    def run(self, n_steps):
         # config_changed, config = self.tuner.next_step()
 
         # change configurations
@@ -45,7 +45,9 @@ class AuturiEngine:
         obs_refs = self.vector_env.poll(bs=1)  # Dict[ObsRef, env_id]
 
         # Find free server and assign ready envs to it
-        action_refs, free_server = self.vector_policy.assign_free_server(obs_refs)
+        action_refs, free_server = self.vector_policy.assign_free_server(
+            obs_refs, n_steps
+        )
 
         # send action to remote simulators
         self.vector_env.send_actions(action_refs)

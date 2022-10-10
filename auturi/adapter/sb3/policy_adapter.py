@@ -75,7 +75,7 @@ class SB3PolicyAdapter(AuturiPolicy):
             and n_steps % self.sde_sample_freq == 0
         )
 
-    def compute_action(self, env_obs, env_rewards, env_dones, env_infos, n_steps):
+    def compute_actions(self, env_obs, env_rewards, env_dones, env_infos, n_steps):
         # Sample a new noise matrix
         if self._to_sample_noise(n_steps):
             self.policy.reset_noise(len(env_obs))

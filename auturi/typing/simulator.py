@@ -52,12 +52,17 @@ class AuturiParallelEnv(AuturiVectorEnv):
         self.env_fns = env_fns
 
         dummy_env = env_fns[0]()
-        self.remote_envs = {
-            i: self._create_env(i, env_fn_) for i, env_fn_ in enumerate(env_fns)
-        }
+
+        self.observation_space = dummy_env.observation_space
+        self.action_space = dummy_env.action_space
+        self.metadata = dummy_env.metadata
 
         self._setup(dummy_env)
         dummy_env.close()
+
+        self.remote_envs = {
+            i: self._create_env(i, env_fn_) for i, env_fn_ in enumerate(env_fns)
+        }
 
     def _create_env(self, index, env_fn):
         raise NotImplementedError

@@ -10,9 +10,7 @@ import ray
 
 from auturi.typing.policy import AuturiVectorPolicy
 from auturi.typing.simulator import AuturiParallelEnv
-
-# from auturi.typing.auxilary
-
+from auturi.vector.common_util import _flatten_obs
 
 
 def _clear_pending_list(pending_list):
@@ -21,13 +19,21 @@ def _clear_pending_list(pending_list):
     pending_list.clear()
 
 
+def _process_ray_env_output(raw_output: Dict[int, object], obs_space: gym.Space):
+    unpack = [ray.get(ref_) for ref_ in raw_output.values()]
+    obs, rews, dones, infos = zip(*unpack)
+    return _flatten_obs(obs, obs_space), np.stack(rews), np.stack(dones), infos
+
+
 @ray.remote
 class RayEnvWrapper:
     def __init__(self, idx, env_fn):
         self.env_id = idx
         self.env = env_fn()
 
-    def step(self, action):
+    def step(self, action, lid=-1):
+        if lid >= 0:
+            action = action[lid]
         observation, reward, done, info = self.env.step(action)
         if done:
             # save final observation where user can get it, then reset
@@ -43,9 +49,10 @@ class RayEnvWrapper:
 
 
 class RayParallelEnv(AuturiParallelEnv):
-    """RayVectorEnv
+    """RayParallelVectorEnv
 
     Uses Ray as backend
+
     """
 
     def _create_env(self, index, env_fn):
@@ -55,9 +62,6 @@ class RayParallelEnv(AuturiParallelEnv):
         return _wrap_env()
 
     def _setup(self, dummy_env):
-        self.observation_space = dummy_env.observation_space
-        self.action_space = dummy_env.action_space
-        self.metadata = dummy_env.metadata
         self.pending_steps = dict()
 
         # print(self.observation_space, self.action_space)
@@ -100,7 +104,7 @@ class RayParallelEnv(AuturiParallelEnv):
             self.pending_steps[step_ref_] = eid  # update pending list
 
     def step(self, actions: np.ndarray):
-        """For debugging. Synchronous step wrapper."""
+        """For debugging Purpose. Synchronous step wrapper."""
         assert len(actions) == self.num_envs
         action_dict = {eid: action_ for eid, action_ in enumerate(actions)}
 
@@ -110,58 +114,26 @@ class RayParallelEnv(AuturiParallelEnv):
         raw_output = self.poll(bs=self.num_envs)
 
         raw_output = OrderedDict(sorted(raw_output.items()))
-        return self._process_output(raw_output)
-
-    def _process_output(self, raw_output: Dict[int, object]):
-        unpack = [ray.get(ref_) for ref_ in raw_output.values()]
-        obs, rews, dones, infos = zip(*unpack)
-        return self._flatten_obs(obs), np.stack(rews), np.stack(dones), infos
-
-    def _flatten_obs(self, obs) -> None:
-        """Borrowed from Stable-baselines3 SubprocVec implementation."""
-
-        space = self.obs_space
-
-        assert isinstance(
-            obs, (list, tuple)
-        ), "expected list or tuple of observations per environment"
-        assert len(obs) > 0, "need observations from at least one environment"
-
-        if isinstance(space, gym.spaces.Dict):
-            assert isinstance(
-                space.spaces, OrderedDict
-            ), "Dict space must have ordered subspaces"
-            assert isinstance(
-                obs[0], dict
-            ), "non-dict observation for environment with Dict observation space"
-            return OrderedDict(
-                [(k, np.stack([o[k] for o in obs])) for k in space.spaces.keys()]
-            )
-        elif isinstance(space, gym.spaces.Tuple):
-            assert isinstance(
-                obs[0], tuple
-            ), "non-tuple observation for environment with Tuple observation space"
-            obs_len = len(space.spaces)
-            return tuple(np.stack([o[i] for o in obs]) for i in range(obs_len))
-        else:
-            return np.stack(obs)
+        return _process_ray_env_output(raw_output, self.observation_space)
 
 
 @ray.remote
 class RayPolicyWrapper:
+    """Wrappers run in separated Ray process."""
+
     def __init__(self, policy_fn):
         self.policy = policy_fn()
 
     def reset(self):
         pass
 
-    def step(self, action):
-        observation, reward, done, info = self.env.step(action)
-        if done:
-            # save final observation where user can get it, then reset
-            info["terminal_observation"] = observation
-            observation = self.env.reset()
-        return (observation, reward, done, info)
+    def compute_actions(self, obs_refs, n_steps):
+        env_obs, env_rewards, env_dones, env_infos = _process_ray_env_output(
+            obs_refs, self.policy.observation_space
+        )
+        return self.policy.compute_actions(
+            env_obs, env_rewards, env_dones, env_infos, n_steps
+        )
 
 
 class RayVectorPolicies(AuturiVectorPolicy):
@@ -181,10 +153,12 @@ class RayVectorPolicies(AuturiVectorPolicy):
             pol.reset.remote(): pid for pid, pol in self.remote_policies.items()
         }
 
-    def assign_free_server(self, obs_refs: Dict[object, int]):
+    def assign_free_server(self, obs_refs: Dict[object, int], n_steps: int):
         free_servers, _ = ray.wait(list(self.pending_policies))
         server_id = self.pending_policies.pop(free_servers[0])
         free_server = self.remote_policies[server_id]
 
-        action_refs = free_server.compute_actions.remote(obs_refs)
+        action_refs = free_server.compute_actions.remote(obs_refs, n_steps)
+        self.pending_policies[action_refs] = server_id
+
         return action_refs, free_server
