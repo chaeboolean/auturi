@@ -5,6 +5,35 @@ from multiprocessing import shared_memory as shm
 import numpy as np
 
 
+class POLICY_COMMAND:
+    STOP_LOOP = 0
+    RUN_LOOP = 1
+    SET_CPU = 2
+    SET_GPU = 3
+    TERMINATE = 4
+    CMD_DONE = 5
+
+class ENV_COMMAND:
+    STOP_LOOP = 0
+    RUN_LOOP = 1
+    RESET = 2  # start
+    SEED = 3
+    TERMINATE = 4
+    CMD_DONE = 5
+
+
+class ENV_STATE:
+    """Indicates simulator state.
+    Initialized to CLOSED
+    """
+
+    STOPPED = 23
+    STEP_DONE = 1  # Newly arrived requests
+    QUEUED = 2  # Inside Server side waiting queue
+    POLICY_DONE = 3  # Processed requests
+    POLICY_OFFSET = 40  # offset
+
+
 def align(num_envs, dummy_arr):
     # if isinstance(dummy_arr, int):
     #     return 32 * num_envs
@@ -14,7 +43,7 @@ def align(num_envs, dummy_arr):
     return dummy_arr.nbytes * num_envs
 
 
-def _get_np_shm(ident_, configs):
+def get_np_shm(ident_, configs):
     _buffer = shm.SharedMemory(configs[f"{ident_}_buffer"])
     np_buffer = np.ndarray(
         configs[f"{ident_}_shape"],
@@ -24,12 +53,48 @@ def _get_np_shm(ident_, configs):
     return _buffer, np_buffer
 
 
+def create_obs_shm_from_dummy(dummy_env):
+    obs_offset = dict()
+    total_bytes = 0
+    dummy_env.reset()
+    info = dict()
+    for _ in range(3):
+        obs__, reward__, done__, info__ = dummy_env.step(
+            dummy_env.action_space.sample()
+        )
+        if done__: dummy_env.reset()
+        info.update(info__)
+    info.update({"terminal_observation": obs__})
+    
+    obs_offset["obs"] = {
+        "shape": obs__.shape,        
+        "dtype": obs__.dtype,
+        "nbytes": obs__.nbytes,
+        "offset": total_bytes,
+    }
+    total_bytes += obs_offset["obs"]["nbytes"]
 
-def _create_shm_from_space(sample_, name, shm_configs, num_envs):
+    assert isinstance(reward__, float)
+    obs_offset["reward"] = {
+        "shape": (), 
+        "dtype": np.float32,
+        "nbytes": 32,
+        "offset": total_bytes,
+    }
+    total_bytes += obs_offset["reward"]["nbytes"]
+    
+    assert isinstance(done__, bool)
+    obs_offset["done"] = {
+        "shape": (), 
+        "dtype": np.int8,
+        "nbytes": 8,
+        "offset": total_bytes,
+    }
+    total_bytes += obs_offset["done"]["nbytes"]
+
+def create_shm_from_sample(sample_, name, shm_configs, num_envs):
     sample_ = sample_ if hasattr(sample_, "shape") else np.array(sample_)
-    # shape_ = sample_.shape if hasattr(sample_, "shape") else ()
     shape_ = (num_envs,) + sample_.shape
-    # dtype_= sample_.shape if hasattr(sample_, "shape") else ()
     buffer_ = shm.SharedMemory(create=True, size=align(num_envs, sample_))
     np_buffer_ = np.ndarray(shape_, dtype=sample_.dtype, buffer=buffer_.buf)
 
@@ -39,17 +104,16 @@ def _create_shm_from_space(sample_, name, shm_configs, num_envs):
     return buffer_, np_buffer_
 
 
-class SHMProcWrapper(mp.Process):
+class SHMProcBase(mp.Process):
     def set_shm_buffer(self, shm_configs):
         self.configs = shm_configs
         
         identifiers = set([key.split("_")[0] for key in shm_configs])
         print(identifiers)
         for ident in identifiers:
-            raw_buf, np_buffer = _get_np_shm(ident, shm_configs)
+            raw_buf, np_buffer = get_np_shm(ident, shm_configs)
             setattr(self, f"_{ident}", raw_buf)
             setattr(self, f"{ident}_buffer", np_buffer)
-            
             
         # self._obs, self.obs_buffer = _get_np_shm("obs", shm_configs)
         # self._action, self.action_buffer = _get_np_shm("action", shm_configs)

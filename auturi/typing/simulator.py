@@ -13,19 +13,26 @@ from auturi.typing.auxilary import ObjRef
 
 
 class AuturiEnv(metaclass=ABCMeta):
+    """Adaptor inherits AuturiEnv class."""
     @abstractmethod
     def step(self, action):
         pass
 
-    def reset(self, seed):
+    @abstractmethod
+    def reset(self):
         pass
 
+    @abstractmethod
+    def seed(self, seed):
+        pass
+
+    @abstractmethod
     def close(self):
         pass
 
 
 class AuturiVectorEnv(metaclass=ABCMeta):
-    def poll(self, bs: int) -> Dict[int, ObjRef]:
+    def poll(self, bs: int = -1) -> Dict[ObjRef, int]:
         """Return reference of `bs` fastest environment ids
 
         Args:
@@ -35,8 +42,14 @@ class AuturiVectorEnv(metaclass=ABCMeta):
             Dict[int, ObjRef]: Maps env_id to step_ref
 
         """
+        if bs < 0:
+            bs = self.num_envs
+        return self._poll(bs)
+    
+    def _poll(self, bs: int = -1) -> Dict[ObjRef, int]:
         raise NotImplementedError
-
+    
+    
     def send_actions(self, action_dict: Dict[int, ObjRef]) -> None:
         """Register action reference to remote env.
 
@@ -44,6 +57,18 @@ class AuturiVectorEnv(metaclass=ABCMeta):
             action_dict (Dict[int, ObjRef]): Maps env_id to service_ref
         """
         raise NotImplementedError
+
+    def start_loop(self):
+        """ Setup when start loop."""
+        pass 
+
+    def finish_loop(self):
+        """ Teardown when finish loop, but not terminate entirely."""
+        pass 
+    
+    def close(self):
+        """Terminate."""
+        pass
 
 
 class AuturiParallelEnv(AuturiVectorEnv):
@@ -56,19 +81,16 @@ class AuturiParallelEnv(AuturiVectorEnv):
         self.observation_space = dummy_env.observation_space
         self.action_space = dummy_env.action_space
         self.metadata = dummy_env.metadata
+        
+        self.setup_with_dummy(dummy_env)
 
-        self._setup(dummy_env)
         dummy_env.close()
 
-        self.remote_envs = {
-            i: self._create_env(i, env_fn_) for i, env_fn_ in enumerate(env_fns)
-        }
-
-    def _create_env(self, index, env_fn):
-        raise NotImplementedError
-
-    def _setup(self, dummy_env):
-        """Set attributes with Dummy Env."""
+        
+    def validate_initialization(self):
+        assert len(self.remote_envs) == self.num_envs
+        
+    def setup_with_dummy(self, dummy):
         pass
 
 
