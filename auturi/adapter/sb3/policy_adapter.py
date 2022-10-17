@@ -1,7 +1,7 @@
-from typing import Any, Callable, Dict, Union
+from typing import Callable
 
 import gym
-import numpy as np
+import os
 import torch as th
 from stable_baselines3.common.buffers import DictRolloutBuffer, RolloutBuffer
 from stable_baselines3.common.utils import obs_as_tensor
@@ -40,8 +40,7 @@ class SB3PolicyAdapter(AuturiPolicy):
         sde_sample_freq: int,
         model_path: str,
     ):
-        
-        self.device = "cpu"  # TODO ????
+        print(os.environ["CUDA_VISIBLE_DEVICES"], " => CUDA_VISIBLE_DEVICES")
         self.model_path = model_path
         
         self.policy_model_cls = model_cls
@@ -53,10 +52,11 @@ class SB3PolicyAdapter(AuturiPolicy):
 
 
     # Called at the beginning of collection loop
-    def load_model(self):
-        self.policy_model = self.policy_model_cls.load(self.model_path, device="cpu")
+    def load_model(self, device="cpu"):
+        self.policy_model = self.policy_model_cls.load(self.model_path, device=device)
         self.policy_model.set_training_mode(False)
-        print("!!!!!!")
+        self.device=device
+    
 
         #self.policy_model = self.policy_model.to(self.device)
     

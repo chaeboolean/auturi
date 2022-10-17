@@ -11,13 +11,13 @@ def process_buffer(agg_buffer, policy, gamma):
     terminal_indices = np.where(agg_buffer["has_terminal_obs"] == True)[0]
     
     if len(terminal_indices) > 0:
-        terminal_obs = agg_buffer["terminal_obs"][terminal_indices]
+        terminal_obs = agg_buffer["terminal_obs"][terminal_indices].to(policy.device)
         terminal_obs = policy.obs_to_tensor(terminal_obs)[0]
 
         with th.no_grad():
             terminal_value = policy.predict_values(terminal_obs)
         
-        agg_buffer["reward"][terminal_indices] += gamma * (terminal_value.numpy().flatten())
+        agg_buffer["reward"][terminal_indices] += gamma * (terminal_value.numpy().flatten()).to("cpu")
 
 
 def insert_as_buffer(rollout_buffer, agg_buffer, num_envs):

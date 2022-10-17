@@ -1,5 +1,6 @@
 import os
 from typing import Any, Callable, Dict, Optional, Type, Union
+from auturi.adapter.sb3.env_adapter import SB3EnvAdapter
 
 import gym
 
@@ -96,13 +97,13 @@ def make_vec_env(
             return env
 
         return _init
-
+    
     # No custom VecEnv is passed
     if vec_env_cls is None:
         # Default: use a DummyVecEnv
         vec_env_cls = DummyVecEnv
 
-    return vec_env_cls([make_env(i + start_index) for i in range(n_envs)], **vec_env_kwargs)
+    return vec_env_cls([lambda: SB3EnvAdapter(make_env(i + start_index)) for i in range(n_envs)], **vec_env_kwargs)
 
 
 def make_atari_env(

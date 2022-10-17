@@ -118,21 +118,20 @@ class OnPolicyAlgorithm(BaseAlgorithm):
             gae_lambda=self.gae_lambda,
             n_envs=self.n_envs,
         )
-
-        ##############################################################
-        #               AUTURI Insertion Point                       #
-        ##############################################################
-        def create_policy_model():
-            policy_ = self.policy_class(  # pytype:disable=not-instantiable
-                self.observation_space,
-                self.action_space,
-                self.lr_schedule,
-                use_sde=self.use_sde,
-                **self.policy_kwargs  # pytype:disable=not-instantiable
-            )
-            policy_ = policy_.to(self.device)
+        self.policy = self.policy_class(  # pytype:disable=not-instantiable
+            self.observation_space,
+            self.action_space,
+            self.lr_schedule,
+            use_sde=self.use_sde,
+            **self.policy_kwargs  # pytype:disable=not-instantiable
+        )
         
-        self.model_fn = create_policy_model
+        print(self.device, "=> MAIN DEVICE \n\n")
+        self.policy = self.policy.to(self.device)
+        print(self.policy.mlp_extractor.value_net[0].weight.device, "=> The VAlue net DEVICE \n\n")
+
+        
+        self.policy_save_path = "log/model_save.pt"
         
     def set_auturi_engine(self, engine):
         self.auturi_engine = engine
@@ -157,24 +156,74 @@ class OnPolicyAlgorithm(BaseAlgorithm):
         :return: True if function returned with at least `n_rollout_steps`
             collected, False if callback terminated rollout prematurely.
         """
-        assert self._last_obs is not None, "No previous observation was provided"
+        # assert self._last_obs is not None, "No previous observation was provided"
         # Switch to eval mode (this affects batch norm / dropout)
-        self.policy.set_training_mode(False)
+        # self.policy.set_training_mode(False)
 
         n_steps = 0
         rollout_buffer.reset()
         # Sample new weights for the state dependent exploration
-        if self.use_sde:
-            self.policy.reset_noise(env.num_envs)
+        # if self.use_sde:
+        #     self.policy.reset_noise(env.num_envs)
 
         callback.on_rollout_start()
 
-        self.auturi_engine.begin_collection_loop()
-        while n_steps < n_rollout_steps:
-            num_processed = self.auturi_engine.run(n_steps)
-            self.num_timesteps += num_processed
+        ##############################################################
+        #               AUTURI Insertion Point                       #
+        ##############################################################
+
+        #self.auturi_engine.begin_collection_loop()
+        vector_env = self.auturi_engine.vector_env
+        vector_policy = self.auturi_engine.vector_policy
+        
+        self.policy.save(self.policy_save_path)
+        
+        vector_env.start_loop()
+        vector_policy.start_loop()
+
+        print(f"================== Start of the loop ==================== ")
+        # print(vector_env.command_buffer)
+        
+        n_steps = 0 
+        while n_steps < n_rollout_steps * vector_env.num_envs:
+            # num_processed = self.auturi_engine.run(n_steps)
+            obs_refs = vector_env.poll(bs=1)            
             
-        self.auturi_engine.finish_collection_loop()
+            # For Ray Bakcend
+            action_refs = vector_policy.assign_free_server(obs_refs, n_steps)
+            vector_env.send_actions(action_refs)
+            
+                        
+            self.num_timesteps += len(obs_refs)
+            n_steps += len(obs_refs)
+
+        print(f"================== End of the loop ==================== ")
+
+        vector_env.finish_loop()
+        vector_policy.finish_loop()
+
+        from auturi.adapter.sb3.env_adapter import insert_as_buffer, process_buffer
+        
+        
+        print("I am here!~!!", n_steps)
+        agg_buffer = vector_env.aggregate_rollouts()
+        for k, v in agg_buffer.items():
+            print(k, ": ", v.shape, " ", v.dtype)
+
+        process_buffer(agg_buffer, self.policy, self.gamma)
+        insert_as_buffer(rollout_buffer, agg_buffer, vector_env.num_envs)
+        
+        
+        last_obs = rollout_buffer.observations[-1]
+        last_dones = rollout_buffer.episode_starts[-1]
+
+        #print(type(last_obs), self.device, type(values), values.devices)
+        
+        with th.no_grad():
+            # Compute value for the last timestep
+            values = self.policy.predict_values(obs_as_tensor(last_obs, self.device))
+
+        rollout_buffer.compute_returns_and_advantage(last_values=values, dones=last_dones)
 
         callback.on_rollout_end()
 
@@ -212,7 +261,7 @@ class OnPolicyAlgorithm(BaseAlgorithm):
             st1= time.time()
             continue_training = self.collect_rollouts(self.env, callback, self.rollout_buffer, n_rollout_steps=self.n_steps)
             st2 = time.time()
-
+            
             if continue_training is False:
                 break
 
