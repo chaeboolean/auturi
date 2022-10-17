@@ -20,7 +20,7 @@ class AuturiPolicy(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def reset(self):
+    def load_model(self):
         pass
 
 class AuturiVectorPolicy:

@@ -26,33 +26,39 @@ Fit abstraction to Auturi Collection Loop Imple, as described below.
 """
 
 
+
+def _to_cpu_numpy(tensor):
+    return tensor.to("cpu").numpy()
+
 class SB3PolicyAdapter(AuturiPolicy):
     def __init__(
         self,
         observation_space: gym.Space,
         action_space: gym.Space,
-        model_fn: Callable,
+        model_cls: Callable,
         use_sde: bool,
         sde_sample_freq: int,
+        model_path: str,
     ):
         
         self.device = "cpu"  # TODO ????
-        policy_model = model_fn()
-        self.policy_model = policy_model.to(self.device)
+        self.model_path = model_path
         
-        self.policy_model.set_training_mode(False)
+        self.policy_model_cls = model_cls
         
         self.observation_space = observation_space
         self.action_space = action_space
         self.use_sde = use_sde
         self.sde_sample_freq = sde_sample_freq
 
-        print(type(self.policy_model), " (((((((( ", model_fn)
 
     # Called at the beginning of collection loop
-    def reset(self):
-        pass
+    def load_model(self):
+        self.policy_model = self.policy_model_cls.load(self.model_path, device="cpu")
+        self.policy_model.set_training_mode(False)
+        print("!!!!!!")
 
+        #self.policy_model = self.policy_model.to(self.device)
     
     def set_device(self, device: str):
         pass
@@ -68,8 +74,6 @@ class SB3PolicyAdapter(AuturiPolicy):
     def compute_actions(self, env_obs, n_steps=3):
         # Sample a new noise matrix
 
-        print("\n^^^^ Compute actions!")
-
         if self._to_sample_noise(n_steps):
             self.policy_model.reset_noise(len(env_obs))
 
@@ -77,8 +81,5 @@ class SB3PolicyAdapter(AuturiPolicy):
             # Convert to pytorch tensor or to TensorDict
             obs_tensor = obs_as_tensor(env_obs, self.device)            
             actions, values, log_probs = self.policy_model(obs_tensor)
-            
-            print("output=>", actions, values, log_probs)
-            print("output=>", actions.dtype, values.dtype, log_probs.dtype)
-        
-        return actions, values, log_probs
+                    
+        return _to_cpu_numpy(actions), _to_cpu_numpy(values), _to_cpu_numpy(log_probs)

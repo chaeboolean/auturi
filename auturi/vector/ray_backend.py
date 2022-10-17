@@ -48,7 +48,7 @@ def _clear_pending_list(pending_list):
     num_ret_ = len(pending_list)
     ray.wait(list(pending_list.keys()), num_returns=num_ret_)
     pending_list.clear()
-
+    
 
 def _process_ray_env_output(raw_output: Dict[int, object], obs_space: gym.Space):
     """Unpack ray object reference and stack to generate np.array."""
@@ -82,6 +82,9 @@ class RayEnvWrapper:
 
     def seed(self, seed):
         self.env.seed(seed)
+        
+    def fetch_rollouts(self):
+        return self.env.fetch_rollouts()
 
 
 class RayParallelEnv(AuturiParallelEnv):
@@ -131,7 +134,22 @@ class RayParallelEnv(AuturiParallelEnv):
         for lid, eid in enumerate(self.last_output.keys()):
             step_ref_ = self.remote_envs[eid].step.remote(action_ref, lid)
             self.pending_steps[step_ref_] = eid  # update pending list
+            
 
+    def aggregate_rollouts(self):
+        _clear_pending_list(self.pending_steps)
+        partial_rollouts = [env.fetch_rollouts.remote() for env in self.remote_envs.values()]
+        
+        dones = ray.get(partial_rollouts)
+        dones = list(filter(lambda elem: len(elem) > 0, dones))
+
+        keys = list(dones[0].keys())
+        buffer_dict = dict()
+        for key in keys:
+            buffer_dict[key] = np.concatenate([done[key] for done in dones])
+        
+        return buffer_dict        
+        
 
     def step(self, actions: np.ndarray):
         """Synchronous step wrapper, just for debugging purpose."""        
@@ -146,8 +164,8 @@ class RayParallelEnv(AuturiParallelEnv):
         sorted_output = OrderedDict(sorted(raw_output.items()))
         return _process_ray_env_output(sorted_output, self.observation_space)
 
-    def close(self):
-        pass
+    def start_loop(self):
+        self.reset()
 
 
 
@@ -160,12 +178,10 @@ class RayPolicyWrapper:
         self.policy_id = idx
         self.policy = policy_fn()
         assert isinstance(self.policy, AuturiPolicy)
-        self.init_finish = True # TODO: Do we really need this?
 
 
-    def reset(self):
-        while not self.init_finish:
-            pass
+    def load_model(self):
+        self.policy.load_model()
 
     def compute_actions(self, obs_refs, n_steps):
 
@@ -187,16 +203,19 @@ class RayVectorPolicies(AuturiVectorPolicy):
         }
         
         self.pending_policies = dict()
-        self.reset()
 
-    def reset(self):
+    def load_model_from_path(self):
         _clear_pending_list(self.pending_policies)
         self.pending_policies = {
-            pol.reset.remote(): pid for pid, pol in self.remote_policies.items()
+            pol.load_model.remote(): pid for pid, pol in self.remote_policies.items()
         }
 
+
+    def start_loop(self):
+        self.load_model_from_path()
+        return super().start_loop()
+
     def assign_free_server(self, obs_refs: Dict[int, object], n_steps: int):
-        print(111111111, "assign_free_server")
         free_servers, _ = ray.wait(list(self.pending_policies.keys()))
         server_id = self.pending_policies.pop(free_servers[0])
         free_server = self.remote_policies[server_id]

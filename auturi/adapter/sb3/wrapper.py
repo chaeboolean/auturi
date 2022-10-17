@@ -47,15 +47,15 @@ def wrap_sb3_OnPolicyAlgorithm(sb3_algo: OnPolicyAlgorithm, tuner: AuturiTuner, 
 
     # create engine with
     assert isinstance(sb3_algo.env, AuturiVectorEnv)
-    assert hasattr(sb3_algo, "model_fn")
 
     def policy_creator():
         return SB3PolicyAdapter(
             observation_space=sb3_algo.env.observation_space,
             action_space=sb3_algo.env.action_space,
-            model_fn=sb3_algo.model_fn,
+            model_cls=sb3_algo.policy_class,
             use_sde=sb3_algo.use_sde,
             sde_sample_freq=sb3_algo.sde_sample_freq,
+            model_path=sb3_algo.policy_save_path,
         )
 
 
@@ -68,18 +68,3 @@ def wrap_sb3_OnPolicyAlgorithm(sb3_algo: OnPolicyAlgorithm, tuner: AuturiTuner, 
 
     engine = AuturiEngine(sb3_algo.env, vector_policy, tuner)
     sb3_algo.set_auturi_engine(engine)
-    
-    
-
-def process_buffer(self):
-    # Aggregate trajectories froms envs
-    raw_buffer = vectorEnv.get()
-    
-    terminal_indices = np.where(terminal_obs == True)
-    terminal_obs = terminal_observation[terminal_indices]
-    terminal_obs = self.policy.obs_to_tensor(terminal_obs)
-
-    with th.no_grad():
-        terminal_value = self.policy.predict_values(terminal_obs)[0]
-
-    rewards[terminal_indices] += self.gamma * terminal_value
