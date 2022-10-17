@@ -40,7 +40,6 @@ class SB3PolicyAdapter(AuturiPolicy):
         sde_sample_freq: int,
         model_path: str,
     ):
-        print(os.environ["CUDA_VISIBLE_DEVICES"], " => CUDA_VISIBLE_DEVICES")
         self.model_path = model_path
         
         self.policy_model_cls = model_cls
@@ -56,12 +55,6 @@ class SB3PolicyAdapter(AuturiPolicy):
         self.policy_model = self.policy_model_cls.load(self.model_path, device=device)
         self.policy_model.set_training_mode(False)
         self.device=device
-    
-
-        #self.policy_model = self.policy_model.to(self.device)
-    
-    def set_device(self, device: str):
-        pass
 
 
     def _to_sample_noise(self, n_steps):
@@ -82,4 +75,4 @@ class SB3PolicyAdapter(AuturiPolicy):
             obs_tensor = obs_as_tensor(env_obs, self.device)            
             actions, values, log_probs = self.policy_model(obs_tensor)
                     
-        return _to_cpu_numpy(actions), _to_cpu_numpy(values), _to_cpu_numpy(log_probs)
+        return _to_cpu_numpy(actions), [_to_cpu_numpy(values).flatten(), _to_cpu_numpy(log_probs)]

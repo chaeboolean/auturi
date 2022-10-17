@@ -5,7 +5,7 @@ should implement Env adapter.
 """
 
 from abc import ABCMeta, abstractmethod
-from typing import Callable, Dict, List, Optional, Sequence, Tuple, Type, Union
+from typing import Callable, Dict, List
 
 import gym
 
@@ -30,6 +30,10 @@ class AuturiEnv(metaclass=ABCMeta):
     def close(self):
         pass
 
+    @abstractmethod
+    def fetch_rollouts(self):
+        """Fetch locally observed trajectories to main loop."""
+        pass
 
 class AuturiVectorEnv(metaclass=ABCMeta):
     def poll(self, bs: int = -1) -> Dict[ObjRef, int]:
@@ -46,11 +50,12 @@ class AuturiVectorEnv(metaclass=ABCMeta):
             bs = self.num_envs
         return self._poll(bs)
     
+    @abstractmethod
     def _poll(self, bs: int = -1) -> Dict[ObjRef, int]:
         raise NotImplementedError
     
-    
-    def send_actions(self, action_dict: Dict[int, ObjRef]) -> None:
+    @abstractmethod
+    def send_actions(self, action_ref: ObjRef) -> None:
         """Register action reference to remote env.
 
         Args:
@@ -67,7 +72,7 @@ class AuturiVectorEnv(metaclass=ABCMeta):
         pass 
     
     def close(self):
-        """Terminate."""
+        """ Terminate."""
         pass
 
 

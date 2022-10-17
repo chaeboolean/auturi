@@ -16,32 +16,26 @@ class AuturiPolicy(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def set_device(self, device: str):
+    def load_model(self, device: str):
         pass
 
-    @abstractmethod
-    def load_model(self):
-        pass
-
-class AuturiVectorPolicy:
+class AuturiVectorPolicy(metaclass=ABCMeta):
     def __init__(self, num_policies: int, policy_fn: Callable):
         self.num_policies = num_policies
         self.policy_fn = policy_fn
 
-
-    def _create_policy(self, index, policy_fn):
+    @abstractmethod
+    def assign_free_server(self, obs_refs: Dict[int, ObjRef], n_steps: int):
         raise NotImplementedError
-
-    def get_free_server(self):
-        raise NotImplementedError
-
-    def _setup(self):
-        pass
 
     def start_loop(self):
         """ Setup when start loop."""
         pass 
 
     def finish_loop(self):
+        """ Teardown when finish loop, but not terminate entirely."""
+        pass 
+    
+    def terminate(self):
         """ Teardown when finish loop, but not terminate entirely."""
         pass 

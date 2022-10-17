@@ -17,7 +17,7 @@ def process_buffer(agg_buffer, policy, gamma):
         with th.no_grad():
             terminal_value = policy.predict_values(terminal_obs)
         
-        agg_buffer["reward"][terminal_indices] += gamma * (terminal_value.numpy().flatten()).to("cpu")
+        agg_buffer["reward"][terminal_indices] += gamma * (terminal_value.numpy()).to("cpu")
 
 
 def insert_as_buffer(rollout_buffer, agg_buffer, num_envs):
@@ -118,9 +118,10 @@ class SB3EnvAdapter(AuturiEnv):
         return observation, reward, done, info
             
     
-    def step(self, actions, values, log_probs):
+    def step(self, actions, action_artifacts):
         """Return only observation, which policy worker needs."""
 
+        values, log_probs = action_artifacts
         # Rescale and perform action
         clipped_actions = actions
         # Clip the actions to avoid out of bound error

@@ -60,11 +60,15 @@ def wrap_sb3_OnPolicyAlgorithm(sb3_algo: OnPolicyAlgorithm, tuner: AuturiTuner, 
 
 
     vecpol_cls = RayVectorPolicies if backend == "ray" else SHMVectorPolicies
-    vector_policy = vecpol_cls(
-        #shm_config=sb3_algo.env.shm_configs,
-        num_policies=1, # tuner.max_policy
-        policy_fn=policy_creator,  
-    )
+    vecpol_kwargs = {
+        "num_policies": 1, # tuner.max_policy
+        "policy_fn": policy_creator,  
+
+    }
+    if backend != "ray":
+        vecpol_kwargs["shm_config"] = sb3_algo.env.shm_configs
+    
+    vector_policy = vecpol_cls(**vecpol_kwargs)
 
     engine = AuturiEngine(sb3_algo.env, vector_policy, tuner)
     sb3_algo.set_auturi_engine(engine)

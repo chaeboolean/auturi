@@ -61,20 +61,19 @@ def _process_ray_env_output(raw_output: Dict[int, object], obs_space: gym.Space)
 
 
 @ray.remote
-class RayEnvWrapper:
+class RayEnvWrapper(AuturiEnv):
     """Environment to Ray Actor"""
     def __init__(self, idx, env_fn):
         self.env_id = idx
         self.env = env_fn()
         assert isinstance(self.env, AuturiEnv)
 
-    def step(self, action_, lid=-1):
+    def step(self, action, lid=-1):
         # action_ref here is already np.nd.array
-        my_action = [action_]
-        if lid >= 0:
-            my_action = [action_elem[lid] for action_elem in action_]
-
-        observation = self.env.step(*my_action)
+        action_, action_artifacts = action
+        my_action = action_[lid]
+        my_artifacts = [elem[lid] for elem in action_artifacts]
+        observation = self.env.step(my_action, my_artifacts)
         return observation
 
     def reset(self):
@@ -82,6 +81,9 @@ class RayEnvWrapper:
 
     def seed(self, seed):
         self.env.seed(seed)
+        
+    def close(self): 
+        self.env.close()
         
     def fetch_rollouts(self):
         return self.env.fetch_rollouts()
@@ -100,14 +102,12 @@ class RayParallelEnv(AuturiParallelEnv):
 
 
     def reset(self):
-        print("\n^^^^ CALL RESET")
         _clear_pending_list(self.pending_steps)
         self.pending_steps = {
             env.reset.remote(): eid for eid, env in self.remote_envs.items()
         }
 
     def seed(self, seed: int):
-        print("\n^^^^ CALL SEED")
         assert len(self.pending_steps) == 0
         self._set_seed({eid: seed + eid for eid in range(self.num_envs)})
 
@@ -119,7 +119,7 @@ class RayParallelEnv(AuturiParallelEnv):
 
         ray.wait(futs, num_returns=len(futs))
 
-    def poll(self, bs: int = -1) -> Dict[object, int]:
+    def _poll(self, bs: int = -1) -> Dict[object, int]:
         assert len(self.pending_steps) >= bs
         done_envs, _ = ray.wait(list(self.pending_steps), num_returns=bs)
 
@@ -169,8 +169,8 @@ class RayParallelEnv(AuturiParallelEnv):
 
 
 
-@ray.remote
-class RayPolicyWrapper:
+@ray.remote(num_gpus=1)
+class RayPolicyWrapper(AuturiPolicy):
     """Wrappers run in separated Ray process."""
 
     def __init__(self, idx, policy_fn):
@@ -180,8 +180,8 @@ class RayPolicyWrapper:
         assert isinstance(self.policy, AuturiPolicy)
 
 
-    def load_model(self):
-        self.policy.load_model()
+    def load_model(self, device="cpu"):
+        self.policy.load_model(device)
 
     def compute_actions(self, obs_refs, n_steps):
 
@@ -193,7 +193,6 @@ class RayPolicyWrapper:
             env_obs, n_steps
         )
         
-        
 
 class RayVectorPolicies(AuturiVectorPolicy):
     def __init__(self, num_policies: int, policy_fn: Callable):
@@ -204,14 +203,14 @@ class RayVectorPolicies(AuturiVectorPolicy):
         
         self.pending_policies = dict()
 
-    def load_model_from_path(self):
+    def load_model_from_path(self, device="cpu"):
         _clear_pending_list(self.pending_policies)
         self.pending_policies = {
-            pol.load_model.remote(): pid for pid, pol in self.remote_policies.items()
+            pol.load_model.remote(device): pid for pid, pol in self.remote_policies.items()
         }
 
 
-    def start_loop(self):
+    def start_loop(self, device="cpu"):
         self.load_model_from_path()
         return super().start_loop()
 
