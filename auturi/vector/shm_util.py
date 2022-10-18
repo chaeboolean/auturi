@@ -7,18 +7,20 @@ import numpy as np
 
 class POLICY_COMMAND:
     STOP_LOOP = 0
-    RUN_LOOP = 1
+    START_LOOP = 423
     SET_CPU = 2
     SET_GPU = 3
     TERMINATE = 4
     CMD_DONE = 5
 
+
 class ENV_COMMAND:
     STOP_LOOP = 0
-    RUN_LOOP = 1
+    START_LOOP = 422
     RESET = 2  # start
     SEED = 3
     TERMINATE = 4
+    AGGREGATE = 19
     CMD_DONE = 5
 
 
@@ -62,12 +64,13 @@ def create_obs_shm_from_dummy(dummy_env):
         obs__, reward__, done__, info__ = dummy_env.step(
             dummy_env.action_space.sample()
         )
-        if done__: dummy_env.reset()
+        if done__:
+            dummy_env.reset()
         info.update(info__)
     info.update({"terminal_observation": obs__})
-    
+
     obs_offset["obs"] = {
-        "shape": obs__.shape,        
+        "shape": obs__.shape,
         "dtype": obs__.dtype,
         "nbytes": obs__.nbytes,
         "offset": total_bytes,
@@ -76,21 +79,22 @@ def create_obs_shm_from_dummy(dummy_env):
 
     assert isinstance(reward__, float)
     obs_offset["reward"] = {
-        "shape": (), 
+        "shape": (),
         "dtype": np.float32,
         "nbytes": 32,
         "offset": total_bytes,
     }
     total_bytes += obs_offset["reward"]["nbytes"]
-    
+
     assert isinstance(done__, bool)
     obs_offset["done"] = {
-        "shape": (), 
+        "shape": (),
         "dtype": np.int8,
         "nbytes": 8,
         "offset": total_bytes,
     }
     total_bytes += obs_offset["done"]["nbytes"]
+
 
 def create_shm_from_sample(sample_, name, shm_configs, num_envs):
     sample_ = sample_ if hasattr(sample_, "shape") else np.array(sample_)
@@ -107,18 +111,22 @@ def create_shm_from_sample(sample_, name, shm_configs, num_envs):
 class SHMProcBase(mp.Process):
     def set_shm_buffer(self, shm_configs):
         self.configs = shm_configs
-        
-        identifiers = set([key.split("_")[0] for key in shm_configs])
+
+        def _make_id(input):
+            li = input.split("_")[:-1]
+            return "_".join(li)
+
+        identifiers = set([_make_id(key) for key in shm_configs])
         print(identifiers)
         for ident in identifiers:
             raw_buf, np_buffer = get_np_shm(ident, shm_configs)
             setattr(self, f"_{ident}", raw_buf)
             setattr(self, f"{ident}_buffer", np_buffer)
-            
+
         # self._obs, self.obs_buffer = _get_np_shm("obs", shm_configs)
         # self._action, self.action_buffer = _get_np_shm("action", shm_configs)
         # self._command, self.command_buffer = _get_np_shm("command", shm_configs)
-        
+
 
 class WaitingQueue:
     """Imitate circular queue, but minimizing redundant numpy copy or traverse array."""

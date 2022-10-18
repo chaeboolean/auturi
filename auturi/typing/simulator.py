@@ -14,6 +14,7 @@ from auturi.typing.auxilary import ObjRef
 
 class AuturiEnv(metaclass=ABCMeta):
     """Adaptor inherits AuturiEnv class."""
+
     @abstractmethod
     def step(self, action):
         pass
@@ -35,6 +36,7 @@ class AuturiEnv(metaclass=ABCMeta):
         """Fetch locally observed trajectories to main loop."""
         pass
 
+
 class AuturiVectorEnv(metaclass=ABCMeta):
     def poll(self, bs: int = -1) -> Dict[ObjRef, int]:
         """Return reference of `bs` fastest environment ids
@@ -49,11 +51,11 @@ class AuturiVectorEnv(metaclass=ABCMeta):
         if bs < 0:
             bs = self.num_envs
         return self._poll(bs)
-    
+
     @abstractmethod
     def _poll(self, bs: int = -1) -> Dict[ObjRef, int]:
         raise NotImplementedError
-    
+
     @abstractmethod
     def send_actions(self, action_ref: ObjRef) -> None:
         """Register action reference to remote env.
@@ -64,15 +66,15 @@ class AuturiVectorEnv(metaclass=ABCMeta):
         raise NotImplementedError
 
     def start_loop(self):
-        """ Setup when start loop."""
-        pass 
+        """Setup when start loop."""
+        pass
 
     def finish_loop(self):
-        """ Teardown when finish loop, but not terminate entirely."""
-        pass 
-    
+        """Teardown when finish loop, but not terminate entirely."""
+        pass
+
     def close(self):
-        """ Terminate."""
+        """Terminate."""
         pass
 
 
@@ -86,15 +88,14 @@ class AuturiParallelEnv(AuturiVectorEnv):
         self.observation_space = dummy_env.observation_space
         self.action_space = dummy_env.action_space
         self.metadata = dummy_env.metadata
-        
+
         self.setup_with_dummy(dummy_env)
 
         dummy_env.close()
 
-        
     def validate_initialization(self):
         assert len(self.remote_envs) == self.num_envs
-        
+
     def setup_with_dummy(self, dummy):
         pass
 

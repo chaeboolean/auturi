@@ -12,12 +12,13 @@ from auturi.typing.auxilary import ObjRef
 
 class AuturiPolicy(metaclass=ABCMeta):
     @abstractmethod
-    def compute_actions(self, obs:ObjRef, n_steps:int):
+    def compute_actions(self, obs: ObjRef, n_steps: int):
         pass
 
     @abstractmethod
     def load_model(self, device: str):
         pass
+
 
 class AuturiVectorPolicy(metaclass=ABCMeta):
     def __init__(self, num_policies: int, policy_fn: Callable):
@@ -29,13 +30,13 @@ class AuturiVectorPolicy(metaclass=ABCMeta):
         raise NotImplementedError
 
     def start_loop(self):
-        """ Setup when start loop."""
-        pass 
+        """Setup when start loop."""
+        pass
 
     def finish_loop(self):
-        """ Teardown when finish loop, but not terminate entirely."""
-        pass 
-    
+        """Teardown when finish loop, but not terminate entirely."""
+        pass
+
     def terminate(self):
-        """ Teardown when finish loop, but not terminate entirely."""
-        pass 
+        """Teardown when finish loop, but not terminate entirely."""
+        pass

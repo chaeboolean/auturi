@@ -1,7 +1,7 @@
+import os
 from typing import Callable
 
 import gym
-import os
 import torch as th
 from stable_baselines3.common.buffers import DictRolloutBuffer, RolloutBuffer
 from stable_baselines3.common.utils import obs_as_tensor
@@ -26,9 +26,9 @@ Fit abstraction to Auturi Collection Loop Imple, as described below.
 """
 
 
-
 def _to_cpu_numpy(tensor):
     return tensor.to("cpu").numpy()
+
 
 class SB3PolicyAdapter(AuturiPolicy):
     def __init__(
@@ -41,21 +41,19 @@ class SB3PolicyAdapter(AuturiPolicy):
         model_path: str,
     ):
         self.model_path = model_path
-        
+
         self.policy_model_cls = model_cls
-        
+
         self.observation_space = observation_space
         self.action_space = action_space
         self.use_sde = use_sde
         self.sde_sample_freq = sde_sample_freq
 
-
     # Called at the beginning of collection loop
     def load_model(self, device="cpu"):
         self.policy_model = self.policy_model_cls.load(self.model_path, device=device)
         self.policy_model.set_training_mode(False)
-        self.device=device
-
+        self.device = device
 
     def _to_sample_noise(self, n_steps):
         return (
@@ -72,7 +70,10 @@ class SB3PolicyAdapter(AuturiPolicy):
 
         with th.no_grad():
             # Convert to pytorch tensor or to TensorDict
-            obs_tensor = obs_as_tensor(env_obs, self.device)            
+            obs_tensor = obs_as_tensor(env_obs, self.device)
             actions, values, log_probs = self.policy_model(obs_tensor)
-                    
-        return _to_cpu_numpy(actions), [_to_cpu_numpy(values).flatten(), _to_cpu_numpy(log_probs)]
+
+        return _to_cpu_numpy(actions), [
+            _to_cpu_numpy(values).flatten(),
+            _to_cpu_numpy(log_probs),
+        ]

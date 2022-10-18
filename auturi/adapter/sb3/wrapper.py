@@ -1,3 +1,6 @@
+import torch as th
+from stable_baselines3.common.on_policy_algorithm import OnPolicyAlgorithm
+from stable_baselines3.common.utils import obs_as_tensor
 
 from auturi.adapter.sb3.policy_adapter import SB3PolicyAdapter
 from auturi.engine import AuturiEngine
@@ -6,9 +9,6 @@ from auturi.typing.simulator import AuturiVectorEnv
 from auturi.vector.ray_backend import RayVectorPolicies
 from auturi.vector.shm_policy import SHMVectorPolicies
 
-import torch as th
-from stable_baselines3.common.on_policy_algorithm import OnPolicyAlgorithm
-from stable_baselines3.common.utils import obs_as_tensor
 
 class SB3OnPolicyAlgorithmEngine(AuturiEngine):
     def _setup(self, rollout_buffer):
@@ -34,7 +34,9 @@ class SB3OnPolicyAlgorithmEngine(AuturiEngine):
         )
 
 
-def wrap_sb3_OnPolicyAlgorithm(sb3_algo: OnPolicyAlgorithm, tuner: AuturiTuner, backend: str="ray"):
+def wrap_sb3_OnPolicyAlgorithm(
+    sb3_algo: OnPolicyAlgorithm, tuner: AuturiTuner, backend: str = "ray"
+):
     """Use wrapper like this
 
     algo = sb3.create_algorithm(configs)
@@ -58,16 +60,14 @@ def wrap_sb3_OnPolicyAlgorithm(sb3_algo: OnPolicyAlgorithm, tuner: AuturiTuner, 
             model_path=sb3_algo.policy_save_path,
         )
 
-
     vecpol_cls = RayVectorPolicies if backend == "ray" else SHMVectorPolicies
     vecpol_kwargs = {
-        "num_policies": 1, # tuner.max_policy
-        "policy_fn": policy_creator,  
-
+        "num_policies": 1,  # tuner.max_policy
+        "policy_fn": policy_creator,
     }
     if backend != "ray":
         vecpol_kwargs["shm_config"] = sb3_algo.env.shm_configs
-    
+
     vector_policy = vecpol_cls(**vecpol_kwargs)
 
     engine = AuturiEngine(sb3_algo.env, vector_policy, tuner)

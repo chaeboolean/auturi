@@ -1,15 +1,15 @@
+import copy
 import time
 from collections import OrderedDict
-from typing import (Any, Callable, Dict, List, Optional, Sequence, Tuple, Type,
-                    Union)
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Type, Union
 
 import numpy as np
-import copy 
 
 from auturi.typing.policy import AuturiPolicy, AuturiVectorPolicy
 from auturi.vector.common_util import _flatten_obs
 from auturi.vector.shm_util import *
 from auturi.vector.shm_util import ENV_STATE
+
 
 class SHMPolicyWrapper(SHMProcBase):
     def __init__(self, index, policy_fn, queue, shm_configs, event):
@@ -20,7 +20,7 @@ class SHMPolicyWrapper(SHMProcBase):
         self.event = event
 
         super().__init__()
-        
+
     def _set_cmd_done(self):
         self.pol_buffer[self.policy_id, 0] = POLICY_COMMAND.CMD_DONE
 
@@ -30,7 +30,6 @@ class SHMPolicyWrapper(SHMProcBase):
 
         # put itself to queue after ready
         self.queue.put(self.policy_id)
-        
 
     def run_loop(self):
         cmd, data = self.pol_buffer[self.policy_id]
@@ -40,16 +39,17 @@ class SHMPolicyWrapper(SHMProcBase):
                 self.event.clear()
                 self._set_cmd_done()
                 break
-            
+
             elif cmd == POLICY_COMMAND.SET_CPU:
                 self._set_device(device="cpu")
 
             elif cmd == POLICY_COMMAND.SET_GPU:
                 self._set_device(device=f"cuda:{int(data)}")
-                        
+
             elif cmd == POLICY_COMMAND.START_LOOP:
                 to_process = np.where(
-                    self.command_buffer[:, 1] == self.policy_id + ENV_STATE.POLICY_OFFSET
+                    self.command_buffer[:, 1]
+                    == self.policy_id + ENV_STATE.POLICY_OFFSET
                 )[0]
                 if len(to_process) == 0:
                     continue
@@ -57,7 +57,7 @@ class SHMPolicyWrapper(SHMProcBase):
                 obs = self.obs_buffer[to_process, :]
                 actions, artifacts = self.policy.compute_actions(obs)
                 self.action_buffer[to_process] = actions
-                
+
                 stacked_artifacts = np.stack(artifacts, -1)
                 self.polartifacts_buffer[to_process] = stacked_artifacts
                 self.command_buffer[to_process, 1] = ENV_STATE.POLICY_DONE
@@ -65,15 +65,15 @@ class SHMPolicyWrapper(SHMProcBase):
                 self.queue.put(self.policy_id)
 
             return cmd
-    
+
         def teardown(self):
             pass
-    
+
     def run(self):
         self.set_shm_buffer(self.shm_configs)
         self.policy = self.policy_fn()
         assert isinstance(self.policy, AuturiPolicy)
-        print(f"******* {self.policy_id}: POLICY CREATE!!")      
+        print(f"******* {self.policy_id}: POLICY CREATE!!")
 
         while True:
             last_cmd = self.run_loop()
@@ -84,7 +84,6 @@ class SHMPolicyWrapper(SHMProcBase):
                 print("POLICY Event SLEEP ==========================")
                 self.event.wait()
                 print("POLICY Event Set ==========================")
-
 
 
 class SHMVectorPolicies(AuturiVectorPolicy):
@@ -98,7 +97,10 @@ class SHMVectorPolicies(AuturiVectorPolicy):
 
         # create policy command buffer
         self._pol, self.pol_buffer = create_shm_from_sample(
-            np.array([1, 1], dtype=np.int32), "pol",  self.shm_config, num_policies,
+            np.array([1, 1], dtype=np.int32),
+            "pol",
+            self.shm_config,
+            num_policies,
         )
 
         # set env-specific command buffer
@@ -107,26 +109,30 @@ class SHMVectorPolicies(AuturiVectorPolicy):
         self.events = {pid: mp.Event() for pid in range(num_policies)}
 
         super().__init__(num_policies, policy_fn)
-        
+
         for index in range(num_policies):
-            p = SHMPolicyWrapper(index, policy_fn, self.pending_policies, self.shm_config, self.events[index])
+            p = SHMPolicyWrapper(
+                index,
+                policy_fn,
+                self.pending_policies,
+                self.shm_config,
+                self.events[index],
+            )
             p.start()
             self.remote_policies[index] = p
-        
 
     def assign_free_server(self, env_ids: List[int], n_steps: int):
         server_id = self.pending_policies.get()
-        
-        # set state        
+
+        # set state
         self.command_buffer[env_ids, 1] = server_id + ENV_STATE.POLICY_OFFSET
         return None, server_id
 
-
     def _set_command(self, command):
         for eid, event in self.events.items():
-            if not event.is_set(): 
+            if not event.is_set():
                 event.set()
-                print("event set for", eid )
+                print("event set for", eid)
 
         self.pol_buffer[:, 0].fill(command)
 
@@ -134,11 +140,9 @@ class SHMVectorPolicies(AuturiVectorPolicy):
         while not np.all(self.pol_buffer[:, 0] == POLICY_COMMAND.CMD_DONE):
             pass
 
-
     def start_loop(self, device="cpu"):
-        cmd = POLICY_COMMAND.SET_CPU if device=="cpu" else POLICY_COMMAND.SET_GPU
+        cmd = POLICY_COMMAND.SET_CPU if device == "cpu" else POLICY_COMMAND.SET_GPU
         self._set_command(cmd)
-
 
     def finish_loop(self):
         self._set_command(POLICY_COMMAND.STOP_LOOP)
@@ -147,10 +151,9 @@ class SHMVectorPolicies(AuturiVectorPolicy):
         while self.pending_policies.qsize() > 0:
             self.pending_policies.get()
 
-
     def terminate(self):
         self._set_command(POLICY_COMMAND.STOP_LOOP)
         for p in self.remote_policies:
             p.join()
-            
+
         self._pol.unlink()

@@ -1,16 +1,14 @@
 import functools
 import time
 from collections import OrderedDict
-from typing import (Any, Callable, Dict, List, Optional, Sequence, Tuple, Type,
-                    Union)
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Type, Union
 
 import gym
 import numpy as np
 import ray
 
-from auturi.typing.simulator import AuturiEnv, AuturiParallelEnv
 from auturi.typing.policy import AuturiPolicy, AuturiVectorPolicy
-
+from auturi.typing.simulator import AuturiEnv, AuturiParallelEnv
 
 
 def _flatten_obs(obs, space) -> None:
@@ -48,12 +46,12 @@ def _clear_pending_list(pending_list):
     num_ret_ = len(pending_list)
     ray.wait(list(pending_list.keys()), num_returns=num_ret_)
     pending_list.clear()
-    
+
 
 def _process_ray_env_output(raw_output: Dict[int, object], obs_space: gym.Space):
     """Unpack ray object reference and stack to generate np.array."""
     unpack = [ray.get(ref_) for ref_ in raw_output.values()]
-    # if len(unpack[0]) == 4:  
+    # if len(unpack[0]) == 4:
     #     obs, rews, dones, infos = zip(*unpack)
     # return _flatten_obs(obs, obs_space), np.stack(rews), np.stack(dones), infos
 
@@ -63,6 +61,7 @@ def _process_ray_env_output(raw_output: Dict[int, object], obs_space: gym.Space)
 @ray.remote
 class RayEnvWrapper(AuturiEnv):
     """Environment to Ray Actor"""
+
     def __init__(self, idx, env_fn):
         self.env_id = idx
         self.env = env_fn()
@@ -81,25 +80,25 @@ class RayEnvWrapper(AuturiEnv):
 
     def seed(self, seed):
         self.env.seed(seed)
-        
-    def close(self): 
+
+    def close(self):
         self.env.close()
-        
+
     def fetch_rollouts(self):
         return self.env.fetch_rollouts()
 
 
 class RayParallelEnv(AuturiParallelEnv):
     """RayParallelVectorEnv that uses Ray as backend."""
+
     def __init__(self, env_fns: List[Callable[[], gym.Env]]):
         self.remote_envs = {
             i: RayEnvWrapper.remote(i, env_fn_) for i, env_fn_ in enumerate(env_fns)
         }
-        
-        super().__init__(env_fns)        
+
+        super().__init__(env_fns)
         self.pending_steps = dict()
         self.last_output = {eid: 325465 for eid in range(self.num_envs)}
-
 
     def reset(self):
         _clear_pending_list(self.pending_steps)
@@ -110,7 +109,6 @@ class RayParallelEnv(AuturiParallelEnv):
     def seed(self, seed: int):
         assert len(self.pending_steps) == 0
         self._set_seed({eid: seed + eid for eid in range(self.num_envs)})
-
 
     def _set_seed(self, seed_dict: Dict[int, int]):
         futs = []
@@ -129,35 +127,37 @@ class RayParallelEnv(AuturiParallelEnv):
         }
         return self.last_output
 
-
     def send_actions(self, action_ref):
         for lid, eid in enumerate(self.last_output.keys()):
             step_ref_ = self.remote_envs[eid].step.remote(action_ref, lid)
             self.pending_steps[step_ref_] = eid  # update pending list
-            
 
     def aggregate_rollouts(self):
         _clear_pending_list(self.pending_steps)
-        partial_rollouts = [env.fetch_rollouts.remote() for env in self.remote_envs.values()]
-        
+        partial_rollouts = [
+            env.fetch_rollouts.remote() for env in self.remote_envs.values()
+        ]
+
         dones = ray.get(partial_rollouts)
         dones = list(filter(lambda elem: len(elem) > 0, dones))
 
         keys = list(dones[0].keys())
         buffer_dict = dict()
         for key in keys:
-            buffer_dict[key] = np.concatenate([done[key] for done in dones])
-        
-        return buffer_dict        
-        
+            li = []
+            for done in dones:
+                li += done[key]
+            buffer_dict[key] = np.stack(li)
+
+        return buffer_dict
 
     def step(self, actions: np.ndarray):
-        """Synchronous step wrapper, just for debugging purpose."""        
+        """Synchronous step wrapper, just for debugging purpose."""
 
         @ray.remote
         def mock_policy():
             return actions
-        
+
         _clear_pending_list(self.pending_steps)
         self.send_actions(mock_policy.remote())
         raw_output = self.poll(bs=self.num_envs)
@@ -166,7 +166,6 @@ class RayParallelEnv(AuturiParallelEnv):
 
     def start_loop(self):
         self.reset()
-
 
 
 @ray.remote(num_gpus=1)
@@ -179,20 +178,15 @@ class RayPolicyWrapper(AuturiPolicy):
         self.policy = policy_fn()
         assert isinstance(self.policy, AuturiPolicy)
 
-
     def load_model(self, device="cpu"):
         self.policy.load_model(device)
 
     def compute_actions(self, obs_refs, n_steps):
 
-        env_obs = _process_ray_env_output(
-            obs_refs, self.policy.observation_space
-        )
-        
-        return self.policy.compute_actions(
-            env_obs, n_steps
-        )
-        
+        env_obs = _process_ray_env_output(obs_refs, self.policy.observation_space)
+
+        return self.policy.compute_actions(env_obs, n_steps)
+
 
 class RayVectorPolicies(AuturiVectorPolicy):
     def __init__(self, num_policies: int, policy_fn: Callable):
@@ -200,15 +194,15 @@ class RayVectorPolicies(AuturiVectorPolicy):
         self.remote_policies = {
             i: RayPolicyWrapper.remote(i, policy_fn) for i in range(num_policies)
         }
-        
+
         self.pending_policies = dict()
 
     def load_model_from_path(self, device="cpu"):
         _clear_pending_list(self.pending_policies)
         self.pending_policies = {
-            pol.load_model.remote(device): pid for pid, pol in self.remote_policies.items()
+            pol.load_model.remote(device): pid
+            for pid, pol in self.remote_policies.items()
         }
-
 
     def start_loop(self, device="cpu"):
         self.load_model_from_path()
