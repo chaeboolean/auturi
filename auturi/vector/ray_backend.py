@@ -1,5 +1,4 @@
-import functools
-import time
+import math
 from collections import OrderedDict
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Type, Union
 
@@ -7,13 +6,14 @@ import gym
 import numpy as np
 import ray
 
+from auturi.typing.environment import AuturiEnv, AuturiSerialEnv, AuturiVectorEnv
 from auturi.typing.policy import AuturiPolicy, AuturiVectorPolicy
-from auturi.typing.simulator import AuturiEnv, AuturiParallelEnv
 
 
-def _flatten_obs(obs, space) -> None:
+def _flatten_obs(obs, space, to_stack=True) -> None:
     """Borrowed from Stable-baselines3 SubprocVec implementation."""
 
+    stacking_fn = np.stack if to_stack else np.concatenate
     assert isinstance(
         obs, (list, tuple)
     ), "expected list or tuple of observations per environment"
@@ -27,7 +27,7 @@ def _flatten_obs(obs, space) -> None:
             obs[0], dict
         ), "non-dict observation for environment with Dict observation space"
         return OrderedDict(
-            [(k, np.stack([o[k] for o in obs])) for k in space.spaces.keys()]
+            [(k, stacking_fn([o[k] for o in obs])) for k in space.spaces.keys()]
         )
 
     elif isinstance(space, gym.spaces.Tuple):
@@ -35,10 +35,10 @@ def _flatten_obs(obs, space) -> None:
             obs[0], tuple
         ), "non-tuple observation for environment with Tuple observation space"
         obs_len = len(space.spaces)
-        return tuple(np.stack([o[i] for o in obs]) for i in range(obs_len))
+        return tuple(stacking_fn([o[i] for o in obs]) for i in range(obs_len))
 
     else:
-        return np.stack(obs)
+        return stacking_fn(obs)
 
 
 def _clear_pending_list(pending_list):
@@ -48,111 +48,118 @@ def _clear_pending_list(pending_list):
     pending_list.clear()
 
 
-def _process_ray_env_output(raw_output: Dict[int, object], obs_space: gym.Space):
+def _process_ray_env_output(
+    raw_output: List[object], obs_space: gym.Space, to_stack: bool = True
+):
     """Unpack ray object reference and stack to generate np.array."""
-    unpack = [ray.get(ref_) for ref_ in raw_output.values()]
-    # if len(unpack[0]) == 4:
-    #     obs, rews, dones, infos = zip(*unpack)
-    # return _flatten_obs(obs, obs_space), np.stack(rews), np.stack(dones), infos
+    unpack = [ray.get(ref_) for ref_ in raw_output]
 
-    return _flatten_obs(unpack, obs_space)
+    return _flatten_obs(unpack, obs_space, to_stack=to_stack)
 
 
 @ray.remote
-class RayEnvWrapper(AuturiEnv):
-    """Environment to Ray Actor"""
+class RayEnvWrapper(AuturiSerialEnv):
+    """SerialEnv used by RayParallelEnv.
+    It inherits step function.
 
-    def __init__(self, idx, env_fn):
-        self.env_id = idx
-        self.env = env_fn()
-        assert isinstance(self.env, AuturiEnv)
+    """
 
-    def step(self, action, lid=-1):
+    def step(self, actions_, lid=-1):
         # action_ref here is already np.nd.array
-        action_, action_artifacts = action
-        my_action = action_[lid]
-        my_artifacts = [elem[lid] for elem in action_artifacts]
-        observation = self.env.step(my_action, my_artifacts)
-        return observation
+        action, action_artifacts = actions_
+        my_action = action[lid : lid + self.num_envs]
+        my_artifacts = [elem[lid : lid + self.num_envs] for elem in action_artifacts]
 
-    def reset(self):
-        return self.env.reset()
-
-    def seed(self, seed):
-        self.env.seed(seed)
-
-    def close(self):
-        self.env.close()
-
-    def fetch_rollouts(self):
-        return self.env.fetch_rollouts()
+        return super().step([my_action, my_artifacts])
 
 
-class RayParallelEnv(AuturiParallelEnv):
+class RayParallelEnv(AuturiVectorEnv):
     """RayParallelVectorEnv that uses Ray as backend."""
 
-    def __init__(self, env_fns: List[Callable[[], gym.Env]]):
-        self.remote_envs = {
-            i: RayEnvWrapper.remote(i, env_fn_) for i, env_fn_ in enumerate(env_fns)
-        }
-
+    def __init__(self, env_fns: List[Callable]):
         super().__init__(env_fns)
         self.pending_steps = dict()
-        self.last_output = {eid: 325465 for eid in range(self.num_envs)}
+        self.last_output = dict()
 
-    def reset(self):
+    def _create_env_worker(self, idx):
+        return RayEnvWrapper.remote(idx, self.env_fns)
+
+    def _set_working_env(self, wid, remote_env, start_idx, num_envs):
+        ref = remote_env.set_working_env.remote(start_idx, num_envs)
+        self.pending_steps[ref] = wid
+
+    def reset(self, to_return=True):
         _clear_pending_list(self.pending_steps)
+        self.last_output.clear()
         self.pending_steps = {
-            env.reset.remote(): eid for eid, env in self.remote_envs.items()
+            env_worker.reset.remote(): wid
+            for wid, env_worker in self._working_workers()
         }
+        if to_return:
+            return _process_ray_env_output(
+                list(self.pending_steps.keys()),
+                self.observation_space,
+                self.num_env_serial <= 1,
+            )
 
     def seed(self, seed: int):
-        assert len(self.pending_steps) == 0
-        self._set_seed({eid: seed + eid for eid in range(self.num_envs)})
+        _clear_pending_list(self.pending_steps)
+        for wid, env_worker in self._working_workers():
+            ref = env_worker.seed.remote(seed)
+            self.pending_steps[ref] = wid
 
-    def _set_seed(self, seed_dict: Dict[int, int]):
-        futs = []
-        for eid, eseed in seed_dict.items():
-            futs.append(self.remote_envs[eid].seed.remote(eseed))
+    def poll(self) -> Dict[object, int]:
+        num_to_return = math.ceil(self.batch_size / self.num_env_serial)
+        assert len(self.pending_steps) >= num_to_return
 
-        ray.wait(futs, num_returns=len(futs))
-
-    def _poll(self, bs: int = -1) -> Dict[object, int]:
-        assert len(self.pending_steps) >= bs
-        done_envs, _ = ray.wait(list(self.pending_steps), num_returns=bs)
+        done_envs, _ = ray.wait(list(self.pending_steps), num_returns=num_to_return)
 
         self.last_output = {
-            self.pending_steps.pop(done_envs[i]): done_envs[i]  # (eid, step_ref)
-            for i in range(bs)
+            self.pending_steps.pop(done_envs[i]): done_envs[i]  # (wid, step_ref)
+            for i in range(num_to_return)
         }
+
         return self.last_output
 
-    def send_actions(self, action_ref):
-        for lid, eid in enumerate(self.last_output.keys()):
-            step_ref_ = self.remote_envs[eid].step.remote(action_ref, lid)
-            self.pending_steps[step_ref_] = eid  # update pending list
+    def send_actions(self, action_ref) -> None:
+        for lid, wid in enumerate(self.last_output.keys()):
+            step_ref_ = self._get_env_worker(wid).step.remote(action_ref, lid)
+            self.pending_steps[step_ref_] = wid  # update pending list
 
     def aggregate_rollouts(self):
         _clear_pending_list(self.pending_steps)
         partial_rollouts = [
-            env.fetch_rollouts.remote() for env in self.remote_envs.values()
+            worker.aggregate_rollouts.remote()
+            for idx, worker in self._working_workers()
         ]
 
         dones = ray.get(partial_rollouts)
         dones = list(filter(lambda elem: len(elem) > 0, dones))
+
+        print(dones)
+        print("**************")
 
         keys = list(dones[0].keys())
         buffer_dict = dict()
         for key in keys:
             li = []
             for done in dones:
-                li += done[key]
-            buffer_dict[key] = np.stack(li)
+                li.append(done[key])
+            buffer_dict[key] = np.concatenate(li)
 
         return buffer_dict
 
-    def step(self, actions: np.ndarray):
+    def start_loop(self):
+        self.reset(to_return=False)
+
+    def step(self, actions: Tuple[np.ndarray]):
         """Synchronous step wrapper, just for debugging purpose."""
+        assert len(actions[0]) == self.num_envs
+        self.batch_size = self.num_envs
+
+        if len(self.last_output) == 0:
+            self.last_output = {wid: None for wid, _ in self._working_workers()}
+            print(self.last_output)
 
         @ray.remote
         def mock_policy():
@@ -160,12 +167,15 @@ class RayParallelEnv(AuturiParallelEnv):
 
         _clear_pending_list(self.pending_steps)
         self.send_actions(mock_policy.remote())
-        raw_output = self.poll(bs=self.num_envs)
-        sorted_output = OrderedDict(sorted(raw_output.items()))
-        return _process_ray_env_output(sorted_output, self.observation_space)
 
-    def start_loop(self):
-        self.reset()
+        raw_output = self.poll()
+        sorted_output = OrderedDict(sorted(raw_output.items()))
+
+        return _process_ray_env_output(
+            list(sorted_output.values()),
+            self.observation_space,
+            self.num_env_serial <= 1,
+        )
 
 
 @ray.remote(num_gpus=1)
@@ -183,7 +193,9 @@ class RayPolicyWrapper(AuturiPolicy):
 
     def compute_actions(self, obs_refs, n_steps):
 
-        env_obs = _process_ray_env_output(obs_refs, self.policy.observation_space)
+        env_obs = _process_ray_env_output(
+            list(obs_refs.values()), self.policy.observation_space
+        )
 
         return self.policy.compute_actions(env_obs, n_steps)
 
@@ -197,18 +209,18 @@ class RayVectorPolicies(AuturiVectorPolicy):
 
         self.pending_policies = dict()
 
-    def load_model_from_path(self, device="cpu"):
+    def load_model(self, device="cpu"):
         _clear_pending_list(self.pending_policies)
         self.pending_policies = {
             pol.load_model.remote(device): pid
             for pid, pol in self.remote_policies.items()
         }
 
-    def start_loop(self, device="cpu"):
-        self.load_model_from_path()
+    def start_loop(self):
+        self.load_model()
         return super().start_loop()
 
-    def assign_free_server(self, obs_refs: Dict[int, object], n_steps: int):
+    def compute_actions(self, obs_refs: Dict[int, object], n_steps: int):
         free_servers, _ = ray.wait(list(self.pending_policies.keys()))
         server_id = self.pending_policies.pop(free_servers[0])
         free_server = self.remote_policies[server_id]

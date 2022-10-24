@@ -1,11 +1,12 @@
 # Formatting files
 auturi/.vscode
-
+logs/
+log/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
-*$py.class
+*$py.claexss
 *.tar.gz
 *.tar
 
