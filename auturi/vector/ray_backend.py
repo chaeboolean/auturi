@@ -1,12 +1,13 @@
 import math
 from collections import OrderedDict
-from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Type, Union
+from typing import Callable, Dict, List, Tuple
 
 import gym
 import numpy as np
 import ray
+import torch.nn as nn
 
-from auturi.typing.environment import AuturiEnv, AuturiSerialEnv, AuturiVectorEnv
+from auturi.typing.environment import AuturiSerialEnv, AuturiVectorEnv
 from auturi.typing.policy import AuturiPolicy, AuturiVectorPolicy
 
 
@@ -55,6 +56,11 @@ def _process_ray_env_output(
     unpack = [ray.get(ref_) for ref_ in raw_output]
 
     return _flatten_obs(unpack, obs_space, to_stack=to_stack)
+
+
+@ray.remote
+def _mock_policy(obj):
+    return obj
 
 
 @ray.remote
@@ -136,9 +142,6 @@ class RayParallelEnv(AuturiVectorEnv):
         dones = ray.get(partial_rollouts)
         dones = list(filter(lambda elem: len(elem) > 0, dones))
 
-        print(dones)
-        print("**************")
-
         keys = list(dones[0].keys())
         buffer_dict = dict()
         for key in keys:
@@ -159,14 +162,9 @@ class RayParallelEnv(AuturiVectorEnv):
 
         if len(self.last_output) == 0:
             self.last_output = {wid: None for wid, _ in self._working_workers()}
-            print(self.last_output)
-
-        @ray.remote
-        def mock_policy():
-            return actions
 
         _clear_pending_list(self.pending_steps)
-        self.send_actions(mock_policy.remote())
+        self.send_actions(_mock_policy.remote(actions))
 
         raw_output = self.poll()
         sorted_output = OrderedDict(sorted(raw_output.items()))
@@ -178,54 +176,48 @@ class RayParallelEnv(AuturiVectorEnv):
         )
 
 
-@ray.remote(num_gpus=1)
-class RayPolicyWrapper(AuturiPolicy):
-    """Wrappers run in separated Ray process."""
-
-    def __init__(self, idx, policy_fn):
-        self.init_finish = False
-        self.policy_id = idx
-        self.policy = policy_fn()
-        assert isinstance(self.policy, AuturiPolicy)
-
-    def load_model(self, device="cpu"):
-        self.policy.load_model(device)
-
-    def compute_actions(self, obs_refs, n_steps):
-
-        env_obs = _process_ray_env_output(
-            list(obs_refs.values()), self.policy.observation_space
-        )
-
-        return self.policy.compute_actions(env_obs, n_steps)
-
-
 class RayVectorPolicies(AuturiVectorPolicy):
-    def __init__(self, num_policies: int, policy_fn: Callable):
-        super().__init__(num_policies, policy_fn)
-        self.remote_policies = {
-            i: RayPolicyWrapper.remote(i, policy_fn) for i in range(num_policies)
-        }
-
+    def __init__(self, policy_cls, policy_kwargs):
+        super().__init__(policy_cls, policy_kwargs)
         self.pending_policies = dict()
 
-    def load_model(self, device="cpu"):
-        _clear_pending_list(self.pending_policies)
-        self.pending_policies = {
-            pol.load_model.remote(device): pid
-            for pid, pol in self.remote_policies.items()
-        }
+    def _create_policy_worker(self, idx: int):
+        @ray.remote(num_gpus=0.2)
+        class RayPolicyWrapper(self.policy_cls):
+            """Wrappers run in separated Ray process."""
 
-    def start_loop(self):
-        self.load_model()
-        return super().start_loop()
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                assert hasattr(self, "observation_space")
+
+            def compute_actions(self, obs_refs, n_steps):
+                env_obs = _process_ray_env_output(
+                    list(obs_refs.values()), self.observation_space
+                )
+                return super().compute_actions(env_obs, n_steps)
+
+        return RayPolicyWrapper.remote(**self.policy_kwargs, idx=idx)
+
+    def _load_policy_model(
+        self, idx: int, policy: AuturiPolicy, model: nn.Module, device: str
+    ):
+        ref = policy.load_model.remote(model, device)
+        self.pending_policies[ref] = idx
 
     def compute_actions(self, obs_refs: Dict[int, object], n_steps: int):
-        free_servers, _ = ray.wait(list(self.pending_policies.keys()))
-        server_id = self.pending_policies.pop(free_servers[0])
-        free_server = self.remote_policies[server_id]
+        free_policies, _ = ray.wait(list(self.pending_policies.keys()))
+        policy_id = self.pending_policies.pop(free_policies[0])
+        free_policy = self._get_policy_worker(policy_id)
 
-        action_refs = free_server.compute_actions.remote(obs_refs, n_steps)
-        self.pending_policies[action_refs] = server_id
+        action_refs = free_policy.compute_actions.remote(obs_refs, n_steps)
+        self.pending_policies[action_refs] = policy_id
 
         return action_refs
+
+    def start_loop(self):
+        _clear_pending_list(self.pending_policies)
+        for wid, _ in self._working_workers():
+            self.pending_policies[_mock_policy.remote(None)] = wid
+
+    def stop_loop(self):
+        _clear_pending_list(self.pending_policies)

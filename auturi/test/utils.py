@@ -4,6 +4,8 @@ from collections import defaultdict
 
 import gym
 import numpy as np
+import ray
+import torch
 
 from auturi.typing.environment import AuturiEnv
 from auturi.typing.policy import AuturiPolicy
@@ -32,8 +34,8 @@ class Timeout:
 
     def __exit__(self, type, value, traceback):
         self.elapsed = time.time() - self.start_time
+        signal.alarm(0)
         self.handle_timeout(None, None)
-        # signal.alarm(0)
 
 
 class DumbEnv(AuturiEnv):
@@ -73,21 +75,35 @@ class DumbEnv(AuturiEnv):
 
 
 class DumbPolicy(AuturiPolicy):
-    def __init__(self, sleep, output_size):
-        # self.model = torch.nn.Linear(input_size, output_size)
-        # self.additional = torch.nn.Linear(input_size, output_size)
-        self.output_size = output_size
-        self.ctr = 0
-        self.sleep = sleep
+    def __init__(self, idx):
+        self.idx = idx
+        self.sleep = 1
+        self.cnt = 0
+        self.device = None
+        self.observation_space = gym.spaces.Box(
+            low=-10, high=30, shape=(10,), dtype=np.float32
+        )
 
-    def load_model(self, device):
-        pass
+    def load_model(self, model, device):
+        self.model = model.to(device)
+        self.device = device
+        self.cnt = 0  # reset
 
     def compute_actions(self, obs, n_steps):
+        obs = self.np_to_tensor(obs)
         time.sleep(self.sleep)
-        obs += self.ctr
-        self.ctr += 1
-        return obs
+
+        self.cnt += 1
+        out = self.model(obs) + self.idx * 10 + self.cnt
+        out = self.tensor_to_np(out)
+
+        return out
+
+    def np_to_tensor(self, np_array):
+        return torch.Tensor(np_array).to(self.device)
+
+    def tensor_to_np(self, tensor):
+        return tensor.detach().cpu().numpy()
 
 
 def create_env_fns(num_envs):
@@ -100,7 +116,6 @@ def create_env_fns(num_envs):
     return [env_fn(idx=idx, sleep=1 + idx) for idx in range(num_envs)]
 
 
-# @pytest.fixture()
-# def create_policies(num_policies, vector_env_cls):
-#     parallel_envs = RayParallelEnv(env_fns)
-#     policy = None
+@ray.remote
+def mock_ray(obj):
+    return obj

@@ -131,3 +131,9 @@ def test_ray_rollouts():
     rollouts = ray_env.aggregate_rollouts()
     assert len(rollouts["obs"]) == 6
     assert len(rollouts["action"]) == 6
+
+
+# TODO
+def test_correctness():
+    """Test with gym simulator, to check its correctness."""
+    pass

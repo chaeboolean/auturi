@@ -169,10 +169,8 @@ class AuturiVectorEnv(VectorMixin, AuturiEnv, metaclass=ABCMeta):
 
         # Set serial_degree to each env_worker
         self.num_env_serial = num_envs // num_parallel
-        print(f"set num_serial = {self.num_env_serial}")
 
         for idx, env_worker in self._working_workers():
-            print("SET new worker! => ", self.num_env_serial * idx, self.num_env_serial)
             self._set_working_env(
                 idx, env_worker, self.num_env_serial * idx, self.num_env_serial
             )

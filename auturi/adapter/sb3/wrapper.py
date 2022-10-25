@@ -3,9 +3,9 @@ from stable_baselines3.common.on_policy_algorithm import OnPolicyAlgorithm
 from stable_baselines3.common.utils import obs_as_tensor
 
 from auturi.adapter.sb3.policy_adapter import SB3PolicyAdapter
-from auturi.engine import AuturiEngine
+from auturi.executor import AuturiEngine
 from auturi.tuner import AuturiTuner
-from auturi.typing.simulator import AuturiVectorEnv
+from auturi.typing.environment import AuturiVectorEnv
 from auturi.vector.ray_backend import RayVectorPolicies
 from auturi.vector.shm_policy import SHMVectorPolicies
 
