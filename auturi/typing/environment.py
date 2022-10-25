@@ -209,3 +209,15 @@ class AuturiVectorEnv(VectorMixin, AuturiEnv, metaclass=ABCMeta):
             return self.local_env_worker
         else:
             return self.remote_env_workers[idx]
+
+    def start_loop(self):
+        """Setup before running collection loop."""
+        pass
+
+    def stop_loop(self):
+        """Stop loop, but not terminate entirely."""
+        pass
+
+    def terminate(self):
+        """Terminate."""
+        pass
