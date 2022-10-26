@@ -10,11 +10,10 @@ import torch.nn as nn
 from auturi.typing.environment import AuturiSerialEnv, AuturiVectorEnv
 from auturi.typing.policy import AuturiPolicy, AuturiVectorPolicy
 
-
-def _flatten_obs(obs, space, to_stack=True) -> None:
+def _flatten_obs(obs, space, stacking_fn: Callable) -> None:
     """Borrowed from Stable-baselines3 SubprocVec implementation."""
 
-    stacking_fn = np.stack if to_stack else np.concatenate
+    
     assert isinstance(
         obs, (list, tuple)
     ), "expected list or tuple of observations per environment"
@@ -49,13 +48,12 @@ def _clear_pending_list(pending_list):
     pending_list.clear()
 
 
-def _process_ray_env_output(
-    raw_output: List[object], obs_space: gym.Space, to_stack: bool = True
-):
+def _process_ray_env_output(raw_output: List[object], obs_space: gym.Space):
     """Unpack ray object reference and stack to generate np.array."""
     unpack = [ray.get(ref_) for ref_ in raw_output]
-
-    return _flatten_obs(unpack, obs_space, to_stack=to_stack)
+    
+    stacking_fn = np.stack if unpack[0].ndim == len(obs_space.shape) else np.concatenate
+    return _flatten_obs(unpack, obs_space, stacking_fn=stacking_fn)
 
 
 @ray.remote
@@ -105,7 +103,6 @@ class RayParallelEnv(AuturiVectorEnv):
             return _process_ray_env_output(
                 list(self.pending_steps.keys()),
                 self.observation_space,
-                self.num_env_serial <= 1,
             )
 
     def seed(self, seed: int):
@@ -124,7 +121,6 @@ class RayParallelEnv(AuturiVectorEnv):
             self.pending_steps.pop(done_envs[i]): done_envs[i]  # (wid, step_ref)
             for i in range(num_to_return)
         }
-
         return self.last_output
 
     def send_actions(self, action_ref) -> None:
@@ -155,6 +151,9 @@ class RayParallelEnv(AuturiVectorEnv):
     def start_loop(self):
         self.reset(to_return=False)
 
+    def stop_loop(self):
+        _clear_pending_list(self.pending_steps)
+
     def step(self, actions: Tuple[np.ndarray]):
         """Synchronous step wrapper, just for debugging purpose."""
         assert len(actions[0]) == self.num_envs
@@ -172,7 +171,6 @@ class RayParallelEnv(AuturiVectorEnv):
         return _process_ray_env_output(
             list(sorted_output.values()),
             self.observation_space,
-            self.num_env_serial <= 1,
         )
 
 

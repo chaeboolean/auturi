@@ -101,17 +101,16 @@ class AuturiSerialEnv(AuturiEnv):
 
     def aggregate_rollouts(self) -> Dict[str, Any]:
         partial_rollouts = [env.aggregate_rollouts() for _, env in self._working_envs()]
-
-        dones = list(filter(lambda elem: len(elem) > 0, partial_rollouts))
-
-        keys = list(dones[0].keys())
+        if len(partial_rollouts[0]) == 0: 
+            return dict()
+        
+        keys = list(partial_rollouts[0].keys())
         buffer_dict = dict()
         for key in keys:
             li = []
-            for done in dones:
+            for done in partial_rollouts:
                 li += done[key]
             buffer_dict[key] = np.stack(li)
-
         return buffer_dict
 
     def _working_envs(self) -> Tuple[int, AuturiEnv]:

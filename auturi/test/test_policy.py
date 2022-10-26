@@ -9,28 +9,18 @@ from auturi.vector.ray_backend import RayVectorPolicies
 
 
 def get_cuda_memory(device_index):
-    h = pynvml.nvmlDeviceGetHandleByIndex(0)
+    h = pynvml.nvmlDeviceGetHandleByIndex(device_index)
     info = pynvml.nvmlDeviceGetMemoryInfo(h)
     return info.used
 
 
-@pytest.fixture
-def create_vector_policy():
-    model = torch.nn.Linear(10, 10, bias=False)
-    model.eval()
-    torch.nn.init.uniform_(model.weight, 1, 1)
-    return model, RayVectorPolicies(
-        policy_cls=utils.DumbPolicy,
-        policy_kwargs={},
-    )
-
-
 # TODO: Not working as wanted.
 @pytest.mark.skip
-def test_load_model(create_vector_policy):
+def test_load_model():
     pynvml.nvmlInit()
 
-    model, vector_policy = create_vector_policy
+    model, policy_cls, policy_kwargs = utils.create_vector_policy()
+    vector_policy = RayVectorPolicies(policy_cls, policy_kwargs)
     assert vector_policy.num_policies == 1
     vector_policy.load_model(model, "cpu")
     assert get_cuda_memory(0) == get_cuda_memory(1)
@@ -54,20 +44,20 @@ def step_policy(test_policy, mock_obs, num_steps, timeout):
 
     return [ray.get(ref).flat[0] for ref in action_refs]
 
-
-def test_vector_policy_basic(create_vector_policy):
+def test_vector_policy_basic():
     mock_obs = np.ones(10)
-    model, vector_policy = create_vector_policy
-    vector_policy.load_model(model, "cpu")
+    model, policy_cls, policy_kwargs = utils.create_vector_policy()
+    vector_policy = RayVectorPolicies(policy_cls, policy_kwargs)
 
+    vector_policy.load_model(model, "cpu")
     action_refs = step_policy(vector_policy, mock_obs, num_steps=3, timeout=3)
 
     assert np.all(np.array(action_refs) == np.array([11, 12, 13]))
 
-
-def test_vector_policy_reconfigure(create_vector_policy):
+def test_vector_policy_reconfigure():
     mock_obs = np.ones(10)
-    model, vector_policy = create_vector_policy
+    model, policy_cls, policy_kwargs = utils.create_vector_policy()
+    vector_policy = RayVectorPolicies(policy_cls, policy_kwargs)
 
     vector_policy.reconfigure(3)
     vector_policy.load_model(model, "cpu")

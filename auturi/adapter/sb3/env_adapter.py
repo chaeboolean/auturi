@@ -4,7 +4,7 @@ import gym
 import numpy as np
 import torch as th
 
-from auturi.typing.simulator import AuturiEnv
+from auturi.typing.environment import AuturiEnv
 
 
 def process_buffer(agg_buffer, policy, gamma):
