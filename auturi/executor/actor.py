@@ -1,10 +1,10 @@
 import time
-from typing import Any, Dict
+from typing import Any, Callable, Dict, Tuple
 
 import torch.nn as nn
 
-from auturi.executor.config import ActorConfig, AuturiMetic
-from auturi.executor.environment import AuturiVectorEnv
+from auturi.executor.config import ActorConfig, AuturiMetric
+from auturi.executor.environment import AuturiEnv
 from auturi.executor.policy import AuturiPolicy
 
 
@@ -15,12 +15,16 @@ class AuturiActor:
 
     """
 
-    def __init__(self, envs: AuturiVectorEnv, policy: AuturiPolicy):
-        assert isinstance(envs, AuturiVectorEnv)
-        assert isinstance(policy, AuturiPolicy)
+    def __init__(
+        self,
+        env_fn: Callable[[], AuturiEnv],
+        policy_fn: Callable[[], AuturiPolicy],
+    ):
+        self.envs = env_fn()
+        self.policy = policy_fn()
 
-        self.envs = envs
-        self.policy = policy
+        assert isinstance(self.envs, AuturiEnv)
+        assert isinstance(self.policy, AuturiPolicy)
 
     def reconfigure(self, config: ActorConfig, model: nn.Module):
         """Adjust envs and policy by given configs."""
@@ -31,7 +35,7 @@ class AuturiActor:
         # Adjust Environment
         self.envs.reconfigure(config)
 
-    def run(self, num_collect: int) -> Dict[str, Any]:
+    def run(self, num_collect: int) -> Tuple[Dict[str, Any], AuturiMetric]:
         """Run collection loop with `num_collect` iterations, and return experience trajectories."""
 
         self.policy.start_loop()
@@ -55,6 +59,6 @@ class AuturiActor:
         self.envs.stop_loop()
         end_time = time.perf_counter()
 
-        return self.envs.aggregate_rollouts(), AuturiMetic(
+        return self.envs.aggregate_rollouts(), AuturiMetric(
             num_collect, end_time - start_time
         )

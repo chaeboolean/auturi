@@ -4,11 +4,12 @@ import pytest
 import auturi.test.utils as utils
 from auturi.executor.actor import AuturiActor
 from auturi.executor.config import ActorConfig
+from auturi.test.utils import check_timeout
 
 
 def create_actor(num_envs):
-    test_envs, test_policy, model = utils.create_ray_actor_args(num_envs)
-    actor = AuturiActor(test_envs, test_policy)
+    test_env_fn, test_policy_fn, model = utils.create_ray_actor_args(num_envs)
+    actor = AuturiActor(test_env_fn, test_policy_fn)
     return actor, model
 
 
@@ -17,10 +18,6 @@ def run_actor(actor, num_collect):
     action_list = [obs_.flat[0] for obs_ in trajectories["action"]]
 
     return np.array(action_list), metric.elapsed
-
-
-def check_timeout(elapsed, timeout):
-    assert timeout <= elapsed and timeout + 0.5 >= elapsed
 
 
 def test_single_env_single_policy():

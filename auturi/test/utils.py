@@ -91,6 +91,10 @@ class DumbEnv(AuturiEnv):
         pass
 
 
+def check_timeout(elapsed, timeout):
+    assert timeout <= elapsed and timeout + 0.5 >= elapsed
+
+
 class DumbPolicy(AuturiPolicy):
     """Dumb policy class for testing.
 
@@ -139,11 +143,23 @@ def create_vector_policy():
 
 
 def create_ray_actor_args(num_envs):
-    env_fns = create_env_fns(num_envs)
-    test_envs = RayParallelEnv(env_fns)
+    def create_env(num_envs):
+        env_fns = create_env_fns(num_envs)
+
+        def _wrap():
+            return RayParallelEnv(env_fns)
+
+        return _wrap
+
     model, policy_cls, policy_kwargs = create_vector_policy()
-    test_policy = RayVectorPolicy(policy_cls, policy_kwargs)
-    return test_envs, test_policy, model
+
+    def create_policy(policy_cls, policy_kwargs):
+        def _wrap():
+            return RayVectorPolicy(policy_cls, policy_kwargs)
+
+        return _wrap
+
+    return create_env(num_envs), create_policy(policy_cls, policy_kwargs), model
 
 
 @ray.remote

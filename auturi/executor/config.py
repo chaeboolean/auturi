@@ -46,9 +46,12 @@ class TunerConfig:
         assert self.num_actors > 0
         assert len(self.actor_config_map) == self.num_actors
 
+    def get(self, actor_id: int):
+        return self.actor_config_map[actor_id]
+
 
 @dataclass
-class AuturiMetic:
+class AuturiMetric:
     """Metrics that an AuturiActor collects for each iteration.
 
     Args:

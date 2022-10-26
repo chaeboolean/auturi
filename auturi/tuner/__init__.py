@@ -1,4 +1,4 @@
-import auturi.typing.tuning as types
+import auturi.executor.config as types
 
 
 class AuturiTuner(object):
@@ -16,7 +16,7 @@ class AuturiTuner(object):
         pass
 
     # works like generator
-    def next_config(self):
+    def next(self):
         # TODO: Only a
         return types.SamplerConfig(
             bs=self.N,
