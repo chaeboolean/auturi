@@ -3,11 +3,19 @@ import pytest
 
 from auturi.executor.actor import AuturiActor
 from auturi.executor.config import ActorConfig
+<<<<<<< HEAD
 from auturi.test.utils import check_timeout, get_create_fn
 
 
 def create_actor(num_envs, backend="ray"):
     test_env_fn, test_policy_fn, model = get_create_fn(num_envs, backend)
+=======
+from auturi.test.utils import check_timeout
+
+
+def create_actor(num_envs):
+    test_env_fn, test_policy_fn, model = utils.create_ray_actor_args(num_envs)
+>>>>>>> executor runs
     actor = AuturiActor(test_env_fn, test_policy_fn)
     return actor, model
 

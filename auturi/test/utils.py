@@ -152,6 +152,25 @@ def get_create_fn(num_envs, backend="ray"):
     )
     return test_env_fn, test_policy_fn, model
 
+def create_ray_actor_args(num_envs):
+    def create_env(num_envs):
+        env_fns = create_env_fns(num_envs)
+
+        def _wrap():
+            return RayParallelEnv(env_fns)
+
+        return _wrap
+
+    model, policy_cls, policy_kwargs = create_vector_policy()
+
+    def create_policy(policy_cls, policy_kwargs):
+        def _wrap():
+            return RayVectorPolicy(policy_cls, policy_kwargs)
+
+        return _wrap
+
+    return create_env(num_envs), create_policy(policy_cls, policy_kwargs), model
+
 
 @ray.remote
 def mock_ray(obj):
