@@ -10,10 +10,10 @@ import torch.nn as nn
 from auturi.typing.environment import AuturiSerialEnv, AuturiVectorEnv
 from auturi.typing.policy import AuturiPolicy, AuturiVectorPolicy
 
+
 def _flatten_obs(obs, space, stacking_fn: Callable) -> None:
     """Borrowed from Stable-baselines3 SubprocVec implementation."""
 
-    
     assert isinstance(
         obs, (list, tuple)
     ), "expected list or tuple of observations per environment"
@@ -51,7 +51,7 @@ def _clear_pending_list(pending_list):
 def _process_ray_env_output(raw_output: List[object], obs_space: gym.Space):
     """Unpack ray object reference and stack to generate np.array."""
     unpack = [ray.get(ref_) for ref_ in raw_output]
-    
+
     stacking_fn = np.stack if unpack[0].ndim == len(obs_space.shape) else np.concatenate
     return _flatten_obs(unpack, obs_space, stacking_fn=stacking_fn)
 
@@ -179,7 +179,7 @@ class RayVectorPolicies(AuturiVectorPolicy):
         super().__init__(policy_cls, policy_kwargs)
         self.pending_policies = dict()
 
-    def _create_policy_worker(self, idx: int):
+    def _create_worker(self, idx: int):
         @ray.remote(num_gpus=0.2)
         class RayPolicyWrapper(self.policy_cls):
             """Wrappers run in separated Ray process."""
@@ -205,8 +205,7 @@ class RayVectorPolicies(AuturiVectorPolicy):
     def compute_actions(self, obs_refs: Dict[int, object], n_steps: int):
         free_policies, _ = ray.wait(list(self.pending_policies.keys()))
         policy_id = self.pending_policies.pop(free_policies[0])
-        free_policy = self._get_policy_worker(policy_id)
-
+        free_policy = self._get_worker(policy_id)
         action_refs = free_policy.compute_actions.remote(obs_refs, n_steps)
         self.pending_policies[action_refs] = policy_id
 

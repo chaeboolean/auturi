@@ -4,11 +4,11 @@ Defines typings related to Policy Worker: AuturiPolicy, VectorPolicy
 """
 import inspect
 from abc import ABCMeta, abstractmethod
-from collections import OrderedDict
 from typing import Any, Dict, Tuple
 
 import torch.nn as nn
 
+from auturi.typing.tuning import ActorConfig
 from auturi.typing.vector import VectorMixin
 
 
@@ -37,62 +37,27 @@ class AuturiVectorPolicy(VectorMixin, AuturiPolicy, metaclass=ABCMeta):
         self.policy_cls = policy_cls
         self.policy_kwargs = policy_kwargs
 
-        self.local_policy = self._create_policy_worker(0)
+        self.set_vector_attrs()
 
-        self.remote_policies = OrderedDict()
-        self.num_policies = 1
+    @property
+    def num_policies(self):
+        return self.num_worker
 
-    def _working_workers(self) -> Tuple[int, AuturiPolicy]:
-        """Iterates all current working workers."""
-        yield 0, self.local_policy
-        for wid in range(1, self.num_policies):
-            yield wid, self.remote_policies[wid]
-
-    def reconfigure(self, num_policies: int):
+    def reconfigure(self, config: ActorConfig, model: nn.Module):
         """Add remote policy if needed."""
 
-        # Create AuturiEnv if needed.
-        current_num_remote_policies = len(self.remote_policies)
-        num_workers_need = num_policies - current_num_remote_policies - 1
-        new_worker_id = current_num_remote_policies + 1
-        while num_workers_need > 0:
-            self.remote_policies[new_worker_id] = self._create_policy_worker(
-                new_worker_id
-            )
-            num_workers_need -= 1
-            new_worker_id += 1
-
         # set number of currently working workers
-        self.num_policies = num_policies
+        self.num_workers = config.num_policy
 
-    def load_model(self, model: nn.Module, device: str) -> None:
+        # call load_model for each policy.
         for wid, policy_worker in self._working_workers():
-            self._load_policy_model(wid, policy_worker, model, device)
-
-    @abstractmethod
-    def _create_policy_worker(self, idx: int) -> AuturiPolicy:
-        """Create worker. If idx is 0, create local worker."""
-        raise NotImplementedError
+            self._load_policy_model(wid, policy_worker, model, config.policy_device)
 
     @abstractmethod
     def _load_policy_model(self, idx: int, policy: AuturiPolicy, device: str) -> None:
         """Load policy model to device for working policy worker each."""
         raise NotImplementedError
 
-    def _get_policy_worker(self, idx: int) -> AuturiPolicy:
-        if idx == 0:
-            return self.local_policy
-        else:
-            return self.remote_policies[idx]
-
-    def start_loop(self):
-        """Setup before running collection loop."""
-        pass
-
-    def stop_loop(self):
-        """Stop loop, but not terminate entirely."""
-        pass
-
-    def terminate(self):
-        """Terminate."""
+    # TODO: No need to imple.
+    def load_model(self, model: nn.Module, device: str):
         pass
