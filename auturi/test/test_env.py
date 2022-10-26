@@ -2,8 +2,8 @@ import numpy as np
 import pytest
 
 import auturi.test.utils as utils
-from auturi.typing.environment import AuturiSerialEnv
-from auturi.vector.ray_backend import RayParallelEnv
+from auturi.executor.environment import AuturiSerialEnv
+from auturi.executor.ray import RayParallelEnv
 
 
 def _test_env(test_env, num_envs, num_steps, timeout):
@@ -13,21 +13,16 @@ def _test_env(test_env, num_envs, num_steps, timeout):
     actions.fill(1)
     action_artifacts = np.copy(actions)
 
-    obs_list = []
     test_env.seed(-1)
+    test_env.reset()
 
-    obs_list.append(test_env.reset())
     with utils.Timeout(min_sec=timeout - 0.5, max_sec=timeout + 0.5):
         for step in range(num_steps):
             obs = test_env.step([actions, [action_artifacts]])
-            obs_list.append(obs)
 
-    for step, obs in enumerate(obs_list):
-        assert len(obs) == num_envs, print(f"shape == {obs.shape}")
-        for env_id in range(num_envs):
-            assert np.all(obs[env_id] == env_id * 10 + step)
-
-    return obs_list
+    agg_obs = test_env.aggregate_rollouts()["obs"]
+    agg_obs = np.array([obs_.flat[0] for obs_ in agg_obs])
+    return agg_obs
 
 
 def create_serial_env(num_envs):
@@ -38,102 +33,123 @@ def create_serial_env(num_envs):
 
 
 def test_serial_env():
-    _test_env(create_serial_env(1), num_envs=1, num_steps=3, timeout=1 * 3)
-    _test_env(create_serial_env(2), num_envs=2, num_steps=3, timeout=(1 + 2) * 3)
-    _test_env(create_serial_env(3), num_envs=3, num_steps=3, timeout=(1 + 2 + 3) * 3)
+    agg_obs = _test_env(create_serial_env(1), num_envs=1, num_steps=3, timeout=0.5 * 3)
+    assert np.all(agg_obs == np.array([1001, 1002, 1003]))
+
+    agg_obs = _test_env(
+        create_serial_env(2), num_envs=2, num_steps=3, timeout=(0.5 + 0.5) * 3
+    )
+    assert np.all(agg_obs == np.array([1001, 1002, 1003, 2001, 2002, 2003]))
+
+    agg_obs = _test_env(
+        create_serial_env(3), num_envs=3, num_steps=3, timeout=(0.5 + 0.5 + 0.5) * 3
+    )
+    assert np.all(
+        agg_obs == np.array([1001, 1002, 1003, 2001, 2002, 2003, 3001, 3002, 3003])
+    )
 
 
 def test_reconfigure_serial_env():
     serial_env = create_serial_env(3)
-    _test_env(serial_env, num_envs=3, num_steps=3, timeout=(1 + 2 + 3) * 3)
+    agg_obs = _test_env(serial_env, num_envs=3, num_steps=3, timeout=(1.5) * 3)
 
     serial_env.set_working_env(0, 1)
-    _test_env(serial_env, num_envs=1, num_steps=3, timeout=1 * 3)
+    agg_obs = _test_env(serial_env, num_envs=1, num_steps=3, timeout=0.5 * 3)
 
     serial_env.set_working_env(0, 2)
-    _test_env(serial_env, num_envs=2, num_steps=3, timeout=(1 + 2) * 3)
+    agg_obs = _test_env(serial_env, num_envs=2, num_steps=3, timeout=1 * 3)
 
     serial_env.terminate()
 
 
-def test_serial_env_aggregate():
+def test_env_aggregate():
     serial_env = create_serial_env(2)
-    _test_env(serial_env, num_envs=2, num_steps=3, timeout=(1 + 2) * 3)
-    rollouts = serial_env.aggregate_rollouts()
-    assert len(rollouts["obs"]) == 6
-    assert len(rollouts["action"]) == 6
+    agg_obs = _test_env(serial_env, num_envs=2, num_steps=3, timeout=1 * 3)
+    assert len(agg_obs) == 6
 
     # Reconfigure
     serial_env.set_working_env(0, 1)
-    _test_env(serial_env, num_envs=1, num_steps=3, timeout=1 * 3)
-    rollouts = serial_env.aggregate_rollouts()
-    assert len(rollouts["obs"]) == 3
-    assert len(rollouts["action"]) == 3
+    agg_obs = _test_env(serial_env, num_envs=1, num_steps=3, timeout=0.5 * 3)
+    assert len(agg_obs) == 3
+
+
+def mock_reconfigure(test_env, num_envs, num_parallel):
+    class _MockConfig:
+        def __init__(self, num_envs, num_parallel):
+            self.num_envs = num_envs
+            self.num_parallel = num_parallel
+            self.batch_size = -1  # dummy
+
+    test_env.reconfigure(_MockConfig(num_envs, num_parallel))
 
 
 def create_ray_env(num_envs, num_parallel):
     env_fns = utils.create_env_fns(num_envs)
     test_envs = RayParallelEnv(env_fns)
-    test_envs.reconfigure(num_envs, num_parallel=num_parallel)
+    mock_reconfigure(test_envs, num_envs, num_parallel)
     return test_envs
 
 
 def test_ray_basic():
     ray_env = create_ray_env(1, 1)
     assert ray_env.num_envs == 1
-    assert ray_env.num_env_workers == 1
-    _test_env(ray_env, num_envs=1, num_steps=3, timeout=1 * 3)
+    assert ray_env.num_workers == 1
+    _test_env(ray_env, num_envs=1, num_steps=3, timeout=0.5 * 3)
 
 
 def test_ray_fully_parallel():
     ray_env = create_ray_env(3, 3)
     assert ray_env.num_envs == 3
-    assert ray_env.num_env_workers == 3
-    _test_env(ray_env, num_envs=3, num_steps=3, timeout=3 * 3)
+    assert ray_env.num_workers == 3
+    agg_obs = _test_env(ray_env, num_envs=3, num_steps=3, timeout=0.5 * 3)
 
 
 def test_ray_serial():
     ray_env = create_ray_env(2, 1)
     assert ray_env.num_envs == 2
-    assert ray_env.num_env_workers == 1
-    _test_env(ray_env, num_envs=2, num_steps=3, timeout=(1 + 2) * 3)
+    assert ray_env.num_workers == 1
+    agg_obs = _test_env(ray_env, num_envs=2, num_steps=3, timeout=(0.5 + 0.5) * 3)
 
 
 def test_ray_combination():
     ray_env = create_ray_env(4, 2)
     assert ray_env.num_envs == 4
-    assert ray_env.num_env_workers == 2
-    _test_env(ray_env, num_envs=4, num_steps=3, timeout=(3 + 4) * 3)
+    assert ray_env.num_workers == 2
+    agg_obs = _test_env(ray_env, num_envs=4, num_steps=3, timeout=(0.5 + 0.5) * 3)
+    print(agg_obs)
 
 
 def test_ray_reconfigure():
     ray_env = create_ray_env(4, 1)
-    ray_env.reconfigure(1, 1)
-    _test_env(ray_env, num_envs=1, num_steps=3, timeout=1 * 3)
 
-    ray_env.reconfigure(2, 2)
-    _test_env(ray_env, num_envs=2, num_steps=3, timeout=2 * 3)
+    mock_reconfigure(ray_env, num_envs=1, num_parallel=1)
+    assert ray_env.num_envs == 1
+    assert ray_env.num_workers == 1
+    _test_env(ray_env, num_envs=1, num_steps=3, timeout=0.5 * 3)
 
-    ray_env.reconfigure(2, 1)
-    _test_env(ray_env, num_envs=2, num_steps=3, timeout=(1 + 2) * 3)
+    mock_reconfigure(ray_env, num_envs=2, num_parallel=2)
+    assert ray_env.num_envs == 2
+    assert ray_env.num_workers == 2
+    _test_env(ray_env, num_envs=2, num_steps=3, timeout=0.5 * 3)
+
+    mock_reconfigure(ray_env, num_envs=2, num_parallel=1)
+    assert ray_env.num_envs == 2
+    assert ray_env.num_workers == 1
+    _test_env(ray_env, num_envs=2, num_steps=3, timeout=(0.5 + 0.5) * 3)
 
 
 def test_ray_rollouts():
     ray_env = create_ray_env(4, 1)
+    mock_reconfigure(ray_env, num_envs=4, num_parallel=1)
+    agg_obs = _test_env(
+        ray_env, num_envs=4, num_steps=2, timeout=(0.5 + 0.5 + 0.5 + 0.5) * 2
+    )
+    assert len(agg_obs) == 8
 
-    _test_env(ray_env, num_envs=4, num_steps=2, timeout=(1 + 2 + 3 + 4) * 2)
-    rollouts = ray_env.aggregate_rollouts()
-    assert len(rollouts["obs"]) == 8
-    assert len(rollouts["action"]) == 8
+    mock_reconfigure(ray_env, num_envs=4, num_parallel=2)
+    agg_obs = _test_env(ray_env, num_envs=4, num_steps=2, timeout=(0.5 + 0.5) * 2)
+    assert len(agg_obs) == 8
 
-    ray_env.reconfigure(2, 2)
-    _test_env(ray_env, num_envs=2, num_steps=3, timeout=2 * 3)
-    rollouts = ray_env.aggregate_rollouts()
-    assert len(rollouts["obs"]) == 6
-    assert len(rollouts["action"]) == 6
-
-
-# TODO
-def test_correctness():
-    """Test with gym simulator, to check its correctness."""
-    pass
+    mock_reconfigure(ray_env, num_envs=4, num_parallel=4)
+    agg_obs = _test_env(ray_env, num_envs=4, num_steps=2, timeout=(0.5) * 2)
+    assert len(agg_obs) == 8

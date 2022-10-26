@@ -6,7 +6,7 @@ from typing import Callable, List
 import gym
 import numpy as np
 
-from auturi.typing.simulator import AuturiEnv, AuturiParallelEnv
+from auturi.executor.environment import AuturiEnv, AuturiParallelEnv
 from auturi.vector.shm_util import *
 
 
@@ -158,6 +158,7 @@ class SHMParallelEnv(AuturiParallelEnv):
         self.env_counter = np.array([-1 for _ in range(self.num_envs)])
 
     def setup_with_dummy(self, dummy):
+        super().setup_with_dummy(dummy)
         self.rollout_samples = dummy.get_rollout_samples()
         for key, sample in self.rollout_samples.items():
             rollkey = f"roll{key}"
@@ -256,7 +257,7 @@ class SHMParallelEnv(AuturiParallelEnv):
         self.env_counter.fill(-1)
         self._set_command(ENV_COMMAND.START_LOOP)
 
-    def finish_loop(self):
+    def stop_loop(self):
         # Env states can be STEP_DONE or QUEUED
         while np.all(
             (self.command_buffer[:, 1] == ENV_STATE.STEP_DONE)
@@ -289,7 +290,7 @@ class SHMParallelEnv(AuturiParallelEnv):
 
         return np.copy(self.obs_buffer), None, None, None
 
-    # Should be called before FINISH_LOOP
+    # Should be called before STOP_LOOP
     def aggregate_rollouts(self):
         print(f"Before accumul =====> ", self.env_counter)
         accumulated_counter = list(itertools.accumulate(self.env_counter))

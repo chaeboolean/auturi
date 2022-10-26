@@ -1,3 +1,4 @@
+import math
 import signal
 import time
 from collections import defaultdict
@@ -6,17 +7,19 @@ import gym
 import numpy as np
 import ray
 import torch
-import math
 
-from auturi.typing.environment import AuturiEnv
-from auturi.typing.policy import AuturiPolicy
+from auturi.executor.environment import AuturiEnv
+from auturi.executor.policy import AuturiPolicy
+from auturi.executor.ray import RayParallelEnv, RayVectorPolicy
+
 
 class Timeout:
     """Testing helper class that emits TimeoutError.
-    
+
     Assert that time for executing code is in range [min_sec, max_sec].
 
     """
+
     def __init__(self, min_sec, max_sec):
         self.min_sec = min_sec
         self.max_sec = max_sec
@@ -43,17 +46,18 @@ class Timeout:
 
 class DumbEnv(AuturiEnv):
     """Dumb environment class for testing.
-    
+
     Initialized with self.value = 1000 * (idx+1).
-    When step function called, 1) sleeps for 0.5 seconds, 
+    When step function called, 1) sleeps for 0.5 seconds,
     and 2) adds action to self.value, 3) return self.value
-    
+
     """
+
     def __init__(self, idx):
         self.idx = idx
         self.init_value = 1000 * (idx + 1)
         self.sleep = 0.5
-        
+
         self.action_space = gym.spaces.Discrete(10)
         self.observation_space = gym.spaces.Box(
             low=-10, high=30, shape=(5, 2), dtype=np.float32
@@ -68,7 +72,6 @@ class DumbEnv(AuturiEnv):
         self.value += action
         self.storage["obs"].append(np.copy(self.value))
         self.storage["action"].append(np.copy(action))
-        print(f"got action! {action}")
 
         return np.copy(self.value)  # , -2.3, False, {}
 
@@ -90,13 +93,14 @@ class DumbEnv(AuturiEnv):
 
 class DumbPolicy(AuturiPolicy):
     """Dumb policy class for testing.
-    
+
     Initialized with self.value = 10 ^ idx
     Internally manages cnt variable which counts the number of compute_actions called.
-    When compute_actions function called, 1) sleeps for 1 second, 
+    When compute_actions function called, 1) sleeps for 1 second,
     and 2) increase self.value by 1, 3) return self.value as action.
-    
+
     """
+
     def __init__(self, idx):
         self.idx = idx
         self.init_value = 0 if idx == 0 else math.pow(10, idx)
@@ -121,14 +125,25 @@ def create_env_fns(num_envs):
     def create_fn(idx):
         def _wrap():
             return DumbEnv(idx)
+
         return _wrap
+
     return [create_fn(idx) for idx in range(num_envs)]
+
 
 def create_vector_policy():
     model = torch.nn.Linear(10, 10, bias=False)
     model.eval()
     torch.nn.init.uniform_(model.weight, 1, 1)
     return model, DumbPolicy, {}
+
+
+def create_ray_actor_args(num_envs):
+    env_fns = create_env_fns(num_envs)
+    test_envs = RayParallelEnv(env_fns)
+    model, policy_cls, policy_kwargs = create_vector_policy()
+    test_policy = RayVectorPolicy(policy_cls, policy_kwargs)
+    return test_envs, test_policy, model
 
 
 @ray.remote

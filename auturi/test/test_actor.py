@@ -1,8 +1,15 @@
 import numpy as np
 import pytest
 
-from auturi.test.utils import create_ray_actor as create_actor
-from auturi.typing.tuning import ActorConfig, TunerConfig
+import auturi.test.utils as utils
+from auturi.executor.actor import AuturiActor
+from auturi.executor.config import ActorConfig
+
+
+def create_actor(num_envs):
+    test_envs, test_policy, model = utils.create_ray_actor_args(num_envs)
+    actor = AuturiActor(test_envs, test_policy)
+    return actor, model
 
 
 def run_actor(actor, num_collect):
@@ -16,7 +23,6 @@ def check_timeout(elapsed, timeout):
     assert timeout <= elapsed and timeout + 0.5 >= elapsed
 
 
-@pytest.mark.skip
 def test_single_env_single_policy():
     actor, model = create_actor(num_envs=1)
     actor_config = ActorConfig(num_envs=1, num_policy=1, num_parallel=1, batch_size=1)
@@ -29,7 +35,6 @@ def test_single_env_single_policy():
     check_timeout(elapsed, timeout=1.5 * 3)
 
 
-@pytest.mark.skip
 def test_serial_env_single_policy():
     actor, model = create_actor(num_envs=4)
     actor_config = ActorConfig(num_envs=2, num_policy=1, num_parallel=1, batch_size=2)
@@ -44,7 +49,6 @@ def test_serial_env_single_policy():
     check_timeout(elapsed, timeout=2 * 3)
 
 
-@pytest.mark.skip
 def test_parallel_env_single_policy():
     actor, model = create_actor(num_envs=4)
     actor_config = ActorConfig(num_envs=3, num_policy=1, num_parallel=3, batch_size=3)
@@ -58,7 +62,6 @@ def test_parallel_env_single_policy():
     check_timeout(elapsed, timeout=1.5 * 3)
 
 
-@pytest.mark.skip
 def test_parallel_and_serial_env_single_policy():
     actor, model = create_actor(num_envs=4)
 
@@ -87,7 +90,6 @@ def test_parallel_and_serial_env_single_policy():
     check_timeout(elapsed, timeout=5)
 
 
-@pytest.mark.skip
 def test_parallel_env_async():
     actor, model = create_actor(num_envs=4)
 
@@ -97,7 +99,6 @@ def test_parallel_env_async():
     check_timeout(elapsed, timeout=4.5)
 
 
-@pytest.mark.skip
 def test_parallel_env_multiple_policy():
     actor, model = create_actor(num_envs=4)
 

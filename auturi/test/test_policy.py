@@ -2,10 +2,9 @@ import numpy as np
 import pynvml
 import pytest
 import ray
-import torch
 
 import auturi.test.utils as utils
-from auturi.vector.ray_backend import RayVectorPolicies
+from auturi.executor.ray import RayVectorPolicy
 
 
 def get_cuda_memory(device_index):
@@ -43,7 +42,7 @@ def test_load_model():
     pynvml.nvmlInit()
 
     model, policy_cls, policy_kwargs = utils.create_vector_policy()
-    vector_policy = RayVectorPolicies(policy_cls, policy_kwargs)
+    vector_policy = RayVectorPolicy(policy_cls, policy_kwargs)
     reconfigure_mock_config(vector_policy, "cpu", model, num_policy=1)
     assert get_cuda_memory(0) == get_cuda_memory(1)
 
@@ -54,7 +53,7 @@ def test_load_model():
 def test_vector_policy_basic():
     mock_obs = np.ones((5, 2))
     model, policy_cls, policy_kwargs = utils.create_vector_policy()
-    vector_policy = RayVectorPolicies(policy_cls, policy_kwargs)
+    vector_policy = RayVectorPolicy(policy_cls, policy_kwargs)
     reconfigure_mock_config(vector_policy, "cpu", model, num_policy=1)
 
     action_refs = step_policy(vector_policy, mock_obs, num_steps=3, timeout=3)
@@ -64,7 +63,7 @@ def test_vector_policy_basic():
 def test_vector_policy_reconfigure():
     mock_obs = np.ones((5, 2))
     model, policy_cls, policy_kwargs = utils.create_vector_policy()
-    vector_policy = RayVectorPolicies(policy_cls, policy_kwargs)
+    vector_policy = RayVectorPolicy(policy_cls, policy_kwargs)
 
     reconfigure_mock_config(vector_policy, "cpu", model, num_policy=3)
     assert vector_policy.num_workers == 3

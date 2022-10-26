@@ -1,6 +1,10 @@
+"""Vector utiility class and functions."""
+
 from abc import ABCMeta, abstractmethod
-from collections import OrderedDict
+from collections import OrderedDict, defaultdict
 from typing import Tuple, TypeVar
+
+import numpy as np
 
 T = TypeVar("T")
 
@@ -49,3 +53,34 @@ class VectorMixin(metaclass=ABCMeta):
     def terminate(self):
         """Terminate."""
         pass
+
+
+def aggregate_partial(partial, already_agg: bool):
+    """Helper function that aggregates worker's remainings, filtering out empty dict.
+
+    Assume that all partial elements have same keys.
+
+    """
+    # if already_agg=True, just append & concat
+    # if already_agg=False, unpack first and then append
+
+    if already_agg:
+        append_fn = lambda list_, elem_: list_.append(elem_)
+        concat_fn = np.concatenate
+
+    else:
+        append_fn = lambda list_, elem_: list_.extend(elem_)
+        concat_fn = np.stack
+
+    agg_dict = defaultdict(list)
+    dones = list(filter(lambda elem: len(elem) > 0, partial))
+
+    if len(dones) > 0:
+        keys = list(dones[0].keys())
+        for key in keys:
+            list_ = []
+            for done in dones:
+                append_fn(list_, done[key])
+            agg_dict[key] = concat_fn(list_)
+
+    return agg_dict

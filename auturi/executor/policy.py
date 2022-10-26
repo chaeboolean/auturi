@@ -4,12 +4,12 @@ Defines typings related to Policy Worker: AuturiPolicy, VectorPolicy
 """
 import inspect
 from abc import ABCMeta, abstractmethod
-from typing import Any, Dict, Tuple
+from typing import Any, Dict
 
 import torch.nn as nn
 
-from auturi.typing.tuning import ActorConfig
-from auturi.typing.vector import VectorMixin
+from auturi.executor.config import ActorConfig
+from auturi.executor.vector_utils import VectorMixin
 
 
 class AuturiPolicy(metaclass=ABCMeta):

@@ -1,12 +1,12 @@
 import copy
 import time
 from collections import OrderedDict
-from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Type, Union
+from typing import (Any, Callable, Dict, List, Optional, Sequence, Tuple, Type,
+                    Union)
 
 import numpy as np
 
-from auturi.typing.policy import AuturiPolicy, AuturiVectorPolicy
-from auturi.vector.common_util import _flatten_obs
+from auturi.executor.policy import AuturiPolicy, AuturiVectorPolicy
 from auturi.vector.shm_util import *
 from auturi.vector.shm_util import ENV_STATE
 
