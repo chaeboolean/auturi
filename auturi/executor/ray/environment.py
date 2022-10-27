@@ -92,7 +92,7 @@ class RayParallelEnv(AuturiVectorEnv):
     def stop_loop(self):
         util.clear_pending_list(self.pending_steps)
 
-    def step(self, actions: Tuple[np.ndarray]):
+    def step(self, actions: Tuple[np.ndarray, List[np.ndarray]]):
         """Synchronous step wrapper, just for debugging purpose."""
         assert len(actions[0]) == self.num_envs
         self.batch_size = self.num_envs

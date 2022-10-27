@@ -59,14 +59,15 @@ class AuturiSerialEnv(AuturiEnv):
         dummy_env.close()
 
         self.envs = dict()  # maps env_id and AuturiEnv instance
-        self.start_idx, self.num_envs = -1, 0
+        self.start_idx, self.end_idx, self.num_envs = -1, -1, 0
 
     def set_working_env(self, start_idx: int, num_envs: int):
         """Initialize environments with env_ids."""
         self.start_idx = start_idx
+        self.end_idx = start_idx + num_envs
         self.num_envs = num_envs
 
-        for env_id in range(self.start_idx, self.start_idx + self.num_envs):
+        for env_id in range(self.start_idx, self.end_idx):
             if env_id not in self.envs:
                 self.envs[env_id] = self.env_fns[env_id]()
 
@@ -99,7 +100,7 @@ class AuturiSerialEnv(AuturiEnv):
 
     def _working_envs(self) -> Tuple[int, AuturiEnv]:
         """Iterates all current working environments."""
-        for env_id in range(self.start_idx, self.start_idx + self.num_envs):
+        for env_id in range(self.start_idx, self.end_idx):
             yield env_id, self.envs[env_id]
 
 
@@ -145,7 +146,7 @@ class AuturiVectorEnv(VectorMixin, AuturiEnv, metaclass=ABCMeta):
     def _set_working_env(
         self, env_id: int, env_worker: AuturiEnv, start_idx: int, num_envs: int
     ) -> None:
-        """Create remote worker."""
+        """Set SerialEnv worker."""
         raise NotImplementedError
 
     @abstractmethod

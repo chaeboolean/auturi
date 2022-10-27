@@ -58,7 +58,9 @@ class DumbEnv(AuturiEnv):
         self.init_value = 1000 * (idx + 1)
         self.sleep = 0.5
 
-        self.action_space = gym.spaces.Discrete(10)
+        self.action_space = gym.spaces.Box(
+            low=-10, high=30, shape=(5, 2), dtype=np.float32
+        )
         self.observation_space = gym.spaces.Box(
             low=-10, high=30, shape=(5, 2), dtype=np.float32
         )

@@ -11,6 +11,7 @@ from auturi.executor.vector_utils import VectorMixin
 from auturi.tuner import AuturiTuner
 
 
+# TODO: Get env_fns at the beginning, and hands out to each actor.
 class AuturiExecutor(VectorMixin, metaclass=ABCMeta):
     """Interacts with Tuner.
     Get configuration from tuner, and change its execution plan.
