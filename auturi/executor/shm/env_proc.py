@@ -6,6 +6,7 @@ import numpy as np
 
 import auturi.executor.shm.util as util
 from auturi.executor.environment import AuturiEnv, AuturiSerialEnv
+from auturi.executor.shm.mixin import SHMProcMixin
 
 
 class ENV_COMMAND:
@@ -31,7 +32,7 @@ class ENV_STATE:
     POLICY_OFFSET = 40  # offset => ASSINGED
 
 
-class SHMEnvProc(mp.Process):
+class SHMEnvProc(mp.Process, SHMProcMixin):
     def __init__(self, idx, env_fns, shm_buffer_attr_dict, event):
         self.worker_id = idx
         self.env = AuturiSerialEnv(idx, env_fns)
@@ -40,46 +41,15 @@ class SHMEnvProc(mp.Process):
 
         super().__init__()
 
-    def _set_cmd_done(self):
-        self.command_buffer[self.worker_id, 0] = ENV_COMMAND.CMD_DONE
+    def initialize(self):
+        self.command_buffer = self.env_buffer
+        self.cmd_enum = ENV_COMMAND
+        self.state_enum = ENV_STATE
 
-    def _set_state(self, state):
-        self.command_buffer[self.worker_id, 1] = state
+    def teardown(self):
+        self.env.terminate()
 
-    def _assert_state(self, state):
-        assert self.command_buffer[self.worker_id, 1] == state
-
-    # def aggregate(self, end_idx):
-    #     start_idx = 0
-    #     if self.env_id > 0:
-    #         start_idx = self.command_buffer[self.env_id - 1, 2]
-
-    #     cnt = end_idx - start_idx
-
-    #     local_rollouts = self.env.fetch_rollouts()
-
-    #     for _key, trajectories in local_rollouts.items():
-    #         roll_buffer = getattr(self, f"roll{_key}_buffer")
-    #         try:
-    #             np.stack(
-    #                 trajectories[:cnt],
-    #                 out=roll_buffer[
-    #                     start_idx:end_idx,
-    #                 ],
-    #             )
-
-    #         except Exception as e:
-
-    #             print(
-    #                 f"[{self.env_id}] {_key} Error!!!=> -- out={roll_buffer[start_idx: end_idx, ].shape}"
-    #             )
-    #             print(
-    #                 f"[{self.env_id}] cnt= {cnt}, len={len(trajectories)} => {trajectories[0]}"
-    #             )
-
-    #             raise e
-
-    def _aggregate(self, start_idx, end_idx):
+    def aggregate(self, start_idx, end_idx):
         pass
 
     def insert_obs_buffer(self, obs):
@@ -145,7 +115,7 @@ class SHMEnvProc(mp.Process):
 
             elif cmd == ENV_COMMAND.AGGREGATE:
                 self._assert_state(ENV_STATE.STOPPED)
-                self._aggregate(int(data1_), int(data2_))
+                self.aggregate(int(data1_), int(data2_))
                 self._set_cmd_done()
                 return cmd
 
@@ -153,30 +123,34 @@ class SHMEnvProc(mp.Process):
                 raise RuntimeError(f"Not allowed: {cmd}")
 
     def run(self):
-        util.set_shm_buffer_from_attr(self, self.shm_buffer_attr_dict)
-        assert hasattr(self, "command_buffer")
-        print(self.command_buffer, "===> Inside envproc")
+        self.main()
 
-        self._set_state(ENV_STATE.STOPPED)
-        self._set_cmd_done()
+    # def aggregate(self, end_idx):
+    #     start_idx = 0
+    #     if self.env_id > 0:
+    #         start_idx = self.command_buffer[self.env_id - 1, 2]
 
-        # run while loop
-        while True:
-            print(self.command_buffer, "===> Inside envproc 2222")
-            self.event.wait()
-            print("\nENV Loop Wake up! ==========================")
-            last_cmd = self._run()
-            print("\nENV Loop LAST CMD = ", last_cmd)
+    #     cnt = end_idx - start_idx
 
-            if last_cmd == ENV_COMMAND.TERMINATE:
-                self.teardown()
-                break
-            else:
-                print("ENV Loop Event SLEEP ==========================")
-                self.event.clear()
-                self.event.wait()
+    #     local_rollouts = self.env.fetch_rollouts()
 
-                print("Someone wake me uup ==========================")
+    #     for _key, trajectories in local_rollouts.items():
+    #         roll_buffer = getattr(self, f"roll{_key}_buffer")
+    #         try:
+    #             np.stack(
+    #                 trajectories[:cnt],
+    #                 out=roll_buffer[
+    #                     start_idx:end_idx,
+    #                 ],
+    #             )
 
-    def teardown(self):
-        self.env.terminate()
+    #         except Exception as e:
+
+    #             print(
+    #                 f"[{self.env_id}] {_key} Error!!!=> -- out={roll_buffer[start_idx: end_idx, ].shape}"
+    #             )
+    #             print(
+    #                 f"[{self.env_id}] cnt= {cnt}, len={len(trajectories)} => {trajectories[0]}"
+    #             )
+
+    #             raise e

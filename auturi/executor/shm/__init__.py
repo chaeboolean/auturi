@@ -36,11 +36,14 @@ def create_shm_actor_args(
         "obs": (obs, max_num_envs),
         "action": (action, max_num_envs),
         "artifacts": (action_artifacts[0], max_num_envs),
-        "command": (
+        "env": (
             np.array([1, 1, 1, 1], dtype=np.int64),
             max_num_envs,
         ),  # cmd, state, data1, data2
-        "policy": (np.array([1, 1], dtype=np.int32), MAX_NUM_POLICY),
+        "policy": (
+            np.array([1, 1, 1], dtype=np.int32),
+            MAX_NUM_POLICY,
+        ),  # cmd, state, data
     }
 
     # Add rollout-related buffers

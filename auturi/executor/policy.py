@@ -54,7 +54,9 @@ class AuturiVectorPolicy(VectorMixin, AuturiPolicy, metaclass=ABCMeta):
             self._load_policy_model(wid, policy_worker, model, config.policy_device)
 
     @abstractmethod
-    def _load_policy_model(self, idx: int, policy: AuturiPolicy, device: str) -> None:
+    def _load_policy_model(
+        self, idx: int, policy: AuturiPolicy, model: nn.Module, device: str
+    ) -> None:
         """Load policy model to device for working policy worker each."""
         raise NotImplementedError
 

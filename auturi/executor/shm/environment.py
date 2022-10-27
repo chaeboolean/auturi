@@ -8,9 +8,10 @@ import numpy as np
 import auturi.executor.shm.util as util
 from auturi.executor.environment import AuturiEnv, AuturiVectorEnv
 from auturi.executor.shm.env_proc import ENV_COMMAND, ENV_STATE, SHMEnvProc
+from auturi.executor.shm.mixin import SHMVectorMixin
 
 
-class SHMParallelEnv(AuturiVectorEnv):
+class SHMParallelEnv(AuturiVectorEnv, SHMVectorMixin):
     """SHMParallelVectorEnv
 
     Uses Python Shared memory implementation as backend
@@ -27,18 +28,23 @@ class SHMParallelEnv(AuturiVectorEnv):
         self.shm_buffer_attr_dict = shm_buffer_attr_dict
 
         self.obs_buffer = self.shm_buffer_dict["obs"][1]
-        self.command_buffer = self.shm_buffer_dict["command"][1]
+        self.env_buffer = self.shm_buffer_dict["env"][1]
         self.action_buffer = self.shm_buffer_dict["action"][1]
+        self._set_command_buffer()
+        assert hasattr(self, "command_buffer") and hasattr(self, "cmd_enum")
 
-        self.command_buffer.fill(
-            ENV_COMMAND.STOP_LOOP
-        )  # anything different from CMD_DONE
+        self.env_buffer.fill(ENV_COMMAND.STOP_LOOP)  # anything different from CMD_DONE
 
         self.queue = util.WaitingQueue(len(env_fns))
         self.events = dict()
         self.env_counter = np.array([-1 for _ in range(len(env_fns))])
 
         super().__init__(env_fns)
+
+    def _set_command_buffer(self):
+        """Should set attributes "command_buffer", "cmd_enum"."""
+        self.command_buffer = self.env_buffer
+        self.cmd_enum = ENV_COMMAND
 
     def _create_worker(self, idx: int):
         self.events[idx] = mp.Event()
@@ -52,7 +58,6 @@ class SHMParallelEnv(AuturiVectorEnv):
         self, worker_id: int, env_worker: AuturiEnv, start_idx: int, num_envs: int
     ) -> None:
         self._wait_command_done(worker_id)
-        print(" \n\n CALL _set_working_env~~")
         self._set_command(
             ENV_COMMAND.SET_ENV, worker_id=worker_id, data1=start_idx, data2=num_envs
         )
@@ -67,8 +72,8 @@ class SHMParallelEnv(AuturiVectorEnv):
         # Env states can be STEP_DONE or QUEUED
         while not np.all(
             np.ma.mask_or(
-                (self.command_buffer[:, 1] == ENV_STATE.STEP_DONE),
-                (self.command_buffer[:, 1] == ENV_STATE.QUEUED),
+                (self._get_state() == ENV_STATE.STEP_DONE),
+                (self._get_state() == ENV_STATE.QUEUED),
             )
         ):
             pass
@@ -80,6 +85,7 @@ class SHMParallelEnv(AuturiVectorEnv):
     def reset(self):
         self._wait_command_done()
         self._set_command(ENV_COMMAND.RESET)
+        return
 
     def seed(self, seed):
         self._wait_command_done()
@@ -87,12 +93,10 @@ class SHMParallelEnv(AuturiVectorEnv):
 
     def poll(self) -> List[int]:
         while True:
-            new_requests_ = np.where(self.command_buffer[:, 1] == ENV_STATE.STEP_DONE)[
-                0
-            ]
-            # if len(new_requests_) > 0: print(new_requests_)
-            self.queue.insert(new_requests_)
-            self.command_buffer[new_requests_, 1] = ENV_STATE.QUEUED
+            new_req = np.where(self._get_state() == ENV_STATE.STEP_DONE)[0]
+            # if len(new_req) > 0: print(new_req)
+            self.queue.insert(new_req)
+            self.env_buffer[new_req, 1] = ENV_STATE.QUEUED
             if self.queue.cnt >= self.batch_size:
                 ret = self.queue.pop(num=self.batch_size)
                 self.env_counter[ret] += 1
@@ -119,11 +123,11 @@ class SHMParallelEnv(AuturiVectorEnv):
         action_, action_artifacts = actions  # Ignore action artifacts
         assert len(action_) == self.num_envs
 
-        while not np.all(self.command_buffer[:, 1] != ENV_STATE.STOPPED):
+        while not np.all(self._get_state() != ENV_STATE.STOPPED):
             pass
 
         np.copyto(self.action_buffer, action_)
-        self.command_buffer[:, 1].fill(ENV_STATE.POLICY_DONE)
+        self._set_state(ENV_STATE.POLICY_DONE)
         _ = self.poll()  # no need to output
 
         return np.copy(self.obs_buffer)
@@ -145,47 +149,3 @@ class SHMParallelEnv(AuturiVectorEnv):
 
         # return ret
         pass
-
-    # Utility methods
-    def _wait_command_done(self, worker_id: int = -1):
-        slice_ = (
-            slice(worker_id, worker_id + 1)
-            if worker_id >= 0
-            else slice(0, self.num_workers)
-        )
-        while not np.all(self.command_buffer[slice_, 0] == ENV_COMMAND.CMD_DONE):
-            pass
-
-        print("call _wait_command_done: ", self.command_buffer[slice_, 0])
-
-    def _set_command(
-        self, command, worker_id: int = -1, data1=None, data2=None, set_event=True
-    ):
-        print("before... _set_command = ", self.command_buffer)
-        slice_ = (
-            slice(worker_id, worker_id + 1)
-            if worker_id >= 0
-            else slice(0, self.num_workers)
-        )
-        if data1 is not None:
-            self.command_buffer[slice_, 2].fill(data1)
-        if data2 is not None:
-            self.command_buffer[slice_, 3].fill(data2)
-        self.command_buffer[slice_, 0].fill(command)
-        print("master= _set_command = ", self.command_buffer)
-
-        if set_event:
-            self._set_event(worker_id)
-
-    def _set_event(self, worker_id: int = -1):
-        wids = (
-            [worker_id]
-            if worker_id >= 0
-            else [wid for wid, _ in self._working_workers()]
-        )
-        for wid in wids:
-            assert not self.events[wid].is_set()
-            self.events[wid].set()
-
-    def _set_state(self, state):
-        self.command_buffer[: self.num_workers, 1].fill(state)

@@ -62,3 +62,7 @@ class AuturiActor:
         return self.envs.aggregate_rollouts(), AuturiMetric(
             num_collect, end_time - start_time
         )
+
+    def terminate(self):
+        self.policy.terminate()
+        self.envs.terminate()
