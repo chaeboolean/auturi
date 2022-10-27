@@ -4,8 +4,8 @@ from typing import Any, Dict, List
 import numpy as np
 import torch.nn as nn
 
-import auturi.executor.shm.env_proc as env_proc
 from auturi.executor.policy import AuturiPolicy, AuturiVectorPolicy
+from auturi.executor.shm.env_proc import SINGLE_ENV_STATE
 from auturi.executor.shm.mixin import SHMVectorMixin
 from auturi.executor.shm.policy_proc import POLICY_COMMAND, POLICY_STATE, SHMPolicyProc
 
@@ -67,9 +67,7 @@ class SHMVectorPolicy(AuturiVectorPolicy, SHMVectorMixin):
             if len(ready_policies) > 0:
                 policy_id = ready_policies[0]
                 # print(f"\n\n Assign: {np.sort(env_ids)} => ", policy_id)
-                self.env_buffer[env_ids, 1] = (
-                    policy_id + env_proc.ENV_STATE.POLICY_OFFSET
-                )
+                self.env_buffer[env_ids, 4] = policy_id + SINGLE_ENV_STATE.POLICY_OFFSET
                 self.policy_buffer[policy_id, 1] = POLICY_STATE.ASSIGNED
 
                 return None

@@ -37,9 +37,9 @@ def create_shm_actor_args(
         "action": (action, max_num_envs),
         "artifacts": (action_artifacts[0], max_num_envs),
         "env": (
-            np.array([1, 1, 1, 1], dtype=np.int64),
+            np.array([1, 1, 1, 1, 1], dtype=np.int64),
             max_num_envs,
-        ),  # cmd, state, data1, data2
+        ),  # cmd, state, data1, data2, env_state
         "policy": (
             np.array([1, 1, 1], dtype=np.int32),
             MAX_NUM_POLICY,

@@ -5,7 +5,7 @@ import numpy as np
 
 import auturi.executor.shm.util as util
 from auturi.executor.environment import AuturiEnv, AuturiVectorEnv
-from auturi.executor.shm.env_proc import ENV_COMMAND, ENV_STATE, SHMEnvProc
+from auturi.executor.shm.env_proc import ENV_COMMAND, SINGLE_ENV_STATE, SHMEnvProc
 from auturi.executor.shm.mixin import SHMVectorMixin
 
 
@@ -32,6 +32,7 @@ class SHMParallelEnv(AuturiVectorEnv, SHMVectorMixin):
         assert hasattr(self, "command_buffer") and hasattr(self, "cmd_enum")
 
         self.env_buffer.fill(ENV_COMMAND.STOP_LOOP)  # anything different from CMD_DONE
+        self.env_buffer[:, 4] = SINGLE_ENV_STATE.STOPPED
 
         self.queue = util.WaitingQueue(len(env_fns))
         self.events = dict()
@@ -68,17 +69,8 @@ class SHMParallelEnv(AuturiVectorEnv, SHMVectorMixin):
 
     def stop_loop(self):
         # Env states can be STEP_DONE or QUEUED
-        while not np.all(
-            np.ma.mask_or(
-                (self._get_state() == ENV_STATE.STEP_DONE),
-                (self._get_state() == ENV_STATE.QUEUED),
-            )
-        ):
-            pass
-
         self._set_command(ENV_COMMAND.STOP_LOOP, set_event=False)
         self._wait_command_done()
-        print("stop loop done!!!")
 
     def reset(self):
         self._wait_command_done()
@@ -91,10 +83,12 @@ class SHMParallelEnv(AuturiVectorEnv, SHMVectorMixin):
 
     def poll(self) -> List[int]:
         while True:
-            new_req = np.where(self._get_state() == ENV_STATE.STEP_DONE)[0]
+            new_req = np.where(
+                self.env_buffer[: self.num_envs, 4] == SINGLE_ENV_STATE.STEP_DONE
+            )[0]
             # if len(new_req) > 0: print(new_req)
             self.queue.insert(new_req)
-            self.env_buffer[new_req, 1] = ENV_STATE.QUEUED
+            self.env_buffer[new_req, 4] = SINGLE_ENV_STATE.QUEUED
             if self.queue.cnt >= self.batch_size:
                 ret = self.queue.pop(num=self.batch_size)
                 self.env_counter[ret] += 1
@@ -121,17 +115,21 @@ class SHMParallelEnv(AuturiVectorEnv, SHMVectorMixin):
         action_, action_artifacts = actions  # Ignore action artifacts
         assert len(action_) == self.num_envs
 
-        while not np.all(self._get_state() != ENV_STATE.STOPPED):
+        while not np.all(
+            self.env_buffer[: self.num_envs, 4] != SINGLE_ENV_STATE.STOPPED
+        ):
             pass
 
         np.copyto(self.action_buffer, action_)
-        self._set_state(ENV_STATE.POLICY_DONE)
+        self.env_buffer[: self.num_envs, 4] = SINGLE_ENV_STATE.POLICY_DONE
         _ = self.poll()  # no need to output
 
         return np.copy(self.obs_buffer)
 
     # Should be called before STOP_LOOP
     def aggregate_rollouts(self):
+        pass
+
         # print(f"Before accumul =====> ", self.env_counter)
         # accumulated_counter = list(itertools.accumulate(self.env_counter))
         # accumulated_counter[-1] = self.rollout_size  # TODO: HACK
@@ -146,4 +144,3 @@ class SHMParallelEnv(AuturiVectorEnv, SHMVectorMixin):
         #     ret[key] = np.copy(getattr(self, rollkey))
 
         # return ret
-        pass

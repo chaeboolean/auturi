@@ -3,6 +3,7 @@ import multiprocessing as mp
 import numpy as np
 
 import auturi.executor.shm.env_proc as env_proc
+import auturi.executor.shm.util as shm_util
 from auturi.executor.policy import AuturiPolicy
 from auturi.executor.shm.mixin import SHMProcMixin
 
@@ -31,12 +32,8 @@ class SHMPolicyProc(mp.Process, SHMProcMixin):
         super().__init__()
 
     def initialize(self):
-        self.policy = self.policy_fn()
-        assert isinstance(self.policy, AuturiPolicy)
-
         self.command_buffer = self.policy_buffer
         self.cmd_enum = POLICY_COMMAND
-        self.state_enum = POLICY_STATE
 
     def _run_loop(self, state):
         # print(f"My name is POLICY")
@@ -45,8 +42,8 @@ class SHMPolicyProc(mp.Process, SHMProcMixin):
 
         elif state == POLICY_STATE.ASSIGNED:
             assigned_env_ids = np.where(
-                self.env_buffer[:, 1]
-                == self.worker_id + env_proc.ENV_STATE.POLICY_OFFSET
+                self.env_buffer[:, 4]
+                == self.worker_id + env_proc.SINGLE_ENV_STATE.POLICY_OFFSET
             )[0]
 
             assert len(assigned_env_ids) > 0
@@ -60,7 +57,7 @@ class SHMPolicyProc(mp.Process, SHMProcMixin):
             self.artifacts_buffer[assigned_env_ids] = artifacts
 
             # convert state
-            self.env_buffer[assigned_env_ids, 1] = env_proc.ENV_STATE.POLICY_DONE
+            self.env_buffer[assigned_env_ids, 4] = env_proc.SINGLE_ENV_STATE.POLICY_DONE
             self._set_state(POLICY_STATE.READY)
 
     def _run(self) -> POLICY_COMMAND:
@@ -84,4 +81,12 @@ class SHMPolicyProc(mp.Process, SHMProcMixin):
                 return cmd
 
     def run(self):
+        self.policy = self.policy_fn()
+        assert isinstance(self.policy, AuturiPolicy)
+
+        shm_util.set_shm_buffer_from_attr(self, self.shm_buffer_attr_dict)
+        self.initialize()
+
+        self._set_state(POLICY_STATE.STOPPED)
+        self._set_cmd_done()
         self.main()

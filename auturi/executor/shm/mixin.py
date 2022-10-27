@@ -1,7 +1,5 @@
 import numpy as np
 
-import auturi.executor.shm.util as shm_util
-
 
 class SHMVectorMixin:
     """Mixin class that supports for SHMVectorEnv and SHMVectorPolicy.
@@ -83,12 +81,6 @@ class SHMProcMixin:
 
     def main(self):
         """Main function."""
-        shm_util.set_shm_buffer_from_attr(self, self.shm_buffer_attr_dict)
-        self.initialize()
-
-        self._set_state(self.state_enum.STOPPED)
-        self._set_cmd_done()
-
         # run while loop
         while True:
             self.event.wait()

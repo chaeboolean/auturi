@@ -8,9 +8,10 @@ import numpy as np
 import ray
 import torch
 
+from auturi.executor import create_actor_args
+from auturi.executor.actor import AuturiActor
 from auturi.executor.environment import AuturiEnv
 from auturi.executor.policy import AuturiPolicy
-from auturi.executor.ray import RayParallelEnv, RayVectorPolicy
 
 
 class Timeout:
@@ -144,24 +145,14 @@ def create_vector_policy():
     return model, DumbPolicy, {}
 
 
-def create_ray_actor_args(num_envs):
-    def create_env(num_envs):
-        env_fns = create_env_fns(num_envs)
-
-        def _wrap():
-            return RayParallelEnv(env_fns)
-
-        return _wrap
-
+def create_actor(num_envs, backend="ray"):
+    env_fns = create_env_fns(num_envs)
     model, policy_cls, policy_kwargs = create_vector_policy()
-
-    def create_policy(policy_cls, policy_kwargs):
-        def _wrap():
-            return RayVectorPolicy(policy_cls, policy_kwargs)
-
-        return _wrap
-
-    return create_env(num_envs), create_policy(policy_cls, policy_kwargs), model
+    test_env_fn, test_policy_fn = create_actor_args(
+        env_fns, policy_cls, policy_kwargs, backend
+    )
+    actor = AuturiActor(test_env_fn, test_policy_fn)
+    return actor, model
 
 
 @ray.remote

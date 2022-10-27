@@ -1,16 +1,8 @@
 import numpy as np
 import pytest
 
-import auturi.test.utils as utils
-from auturi.executor.actor import AuturiActor
 from auturi.executor.config import ActorConfig
-from auturi.test.utils import check_timeout
-
-
-def create_actor(num_envs):
-    test_env_fn, test_policy_fn, model = utils.create_ray_actor_args(num_envs)
-    actor = AuturiActor(test_env_fn, test_policy_fn)
-    return actor, model
+from auturi.test.utils import check_timeout, create_actor
 
 
 def run_actor(actor, num_collect):

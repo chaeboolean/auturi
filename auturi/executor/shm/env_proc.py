@@ -1,5 +1,8 @@
 import multiprocessing as mp
 
+import numpy as np
+
+import auturi.executor.shm.util as shm_util
 from auturi.executor.environment import AuturiSerialEnv
 from auturi.executor.shm.mixin import SHMProcMixin
 
@@ -15,8 +18,15 @@ class ENV_COMMAND:
     CMD_DONE = 5
 
 
-class ENV_STATE:
-    """Indicates simulator state.
+class ENV_WORKER_STATE:
+    """Indicates state of AuturiSerialEnv."""
+
+    STOPPED = 23
+    RUNNING = 24  # Newly arrived requests
+
+
+class SINGLE_ENV_STATE:
+    """Indicates single simulator state.
     Initialized to STOPPED.
     """
 
@@ -39,7 +49,6 @@ class SHMEnvProc(mp.Process, SHMProcMixin):
     def initialize(self):
         self.command_buffer = self.env_buffer
         self.cmd_enum = ENV_COMMAND
-        self.state_enum = ENV_STATE
 
     def teardown(self):
         self.env.terminate()
@@ -55,53 +64,86 @@ class SHMEnvProc(mp.Process, SHMProcMixin):
         action_artifacts = self.artifacts_buffer[self.env.start_idx : self.env.end_idx]
         return action, action_artifacts
 
+    def set_single_env_state(self, single_env_state):
+        self.env_buffer[self.env.start_idx : self.env.end_idx, 4] = single_env_state
+
+    def get_single_env_state(self):
+        return self.env_buffer[self.env.start_idx, 4]
+
+    def wait_to_stop(self):
+        while not np.all(
+            np.ma.mask_or(
+                (
+                    self.env_buffer[self.env.start_idx : self.env.end_idx, 4]
+                    == SINGLE_ENV_STATE.STEP_DONE
+                ),
+                (
+                    self.env_buffer[self.env.start_idx : self.env.end_idx, 4]
+                    == SINGLE_ENV_STATE.QUEUED
+                ),
+            )
+        ):
+            pass
+
+        self.env_buffer[
+            self.env.start_idx : self.env.end_idx, 4
+        ] = SINGLE_ENV_STATE.STOPPED
+
     def _run_loop(self, state):
-        if state == ENV_STATE.STOPPED:
+        if state == ENV_WORKER_STATE.STOPPED:
+            self._set_state(ENV_WORKER_STATE.RUNNING)
+
             obs = self.env.reset()
             self.insert_obs_buffer(obs)
-            self._set_state(ENV_STATE.STEP_DONE)
+            self.set_single_env_state(SINGLE_ENV_STATE.STEP_DONE)
 
-        elif state == ENV_STATE.POLICY_DONE:
+        elif self.get_single_env_state() == SINGLE_ENV_STATE.POLICY_DONE:
             action, artifacts = self.get_actions()
             obs = self.env.step((action, artifacts))
             self.insert_obs_buffer(obs)
-            self._set_state(ENV_STATE.STEP_DONE)
+            self.set_single_env_state(SINGLE_ENV_STATE.STEP_DONE)
 
     def _run(self) -> ENV_COMMAND:
         while True:
-            cmd, state, data1_, data2_ = self.command_buffer[self.worker_id]
+            cmd, state, data1_, data2_, _ = self.command_buffer[self.worker_id]
 
             # First time to call run_loop. We should call reset
             if cmd == ENV_COMMAND.START_LOOP:
                 self._run_loop(state)
 
             # should break if cmd is not START_LOOP
-            elif cmd == ENV_COMMAND.TERMINATE or cmd == ENV_COMMAND.STOP_LOOP:
-                self._set_state(ENV_STATE.STOPPED)
+            elif cmd == ENV_COMMAND.STOP_LOOP:
+                self.wait_to_stop()  # wait until all simulators stop.
+                self._set_state(ENV_WORKER_STATE.STOPPED)
+                self._set_cmd_done()
+                return cmd
+
+            elif cmd == ENV_COMMAND.TERMINATE:
+                self._assert_state(ENV_WORKER_STATE.STOPPED)
                 self._set_cmd_done()
                 return cmd
 
             elif cmd == ENV_COMMAND.SET_ENV:
-                self._assert_state(ENV_STATE.STOPPED)
+                self._assert_state(ENV_WORKER_STATE.STOPPED)
                 self.env.set_working_env(int(data1_), int(data2_))
                 self._set_cmd_done()
                 return cmd
 
             elif cmd == ENV_COMMAND.SEED:
-                self._assert_state(ENV_STATE.STOPPED)
+                self._assert_state(ENV_WORKER_STATE.STOPPED)
                 self.env.seed(int(data1_))
                 self._set_cmd_done()
                 return cmd
 
             elif cmd == ENV_COMMAND.RESET:
-                self._assert_state(ENV_STATE.STOPPED)
+                self._assert_state(ENV_WORKER_STATE.STOPPED)
                 obs = self.env.reset()
                 self.insert_obs_buffer(obs)
                 self._set_cmd_done()
                 return cmd
 
             elif cmd == ENV_COMMAND.AGGREGATE:
-                self._assert_state(ENV_STATE.STOPPED)
+                self._assert_state(ENV_WORKER_STATE.STOPPED)
                 self.aggregate(int(data1_), int(data2_))
                 self._set_cmd_done()
                 return cmd
@@ -110,6 +152,11 @@ class SHMEnvProc(mp.Process, SHMProcMixin):
                 raise RuntimeError(f"Not allowed: {cmd}")
 
     def run(self):
+        shm_util.set_shm_buffer_from_attr(self, self.shm_buffer_attr_dict)
+        self.initialize()
+
+        self._set_state(ENV_WORKER_STATE.STOPPED)
+        self._set_cmd_done()
         self.main()
 
     # def aggregate(self, end_idx):
