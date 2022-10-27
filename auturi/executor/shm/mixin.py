@@ -98,6 +98,4 @@ class SHMProcMixin:
                 self.teardown()
                 break
             else:
-                print("ENV Loop Event SLEEP ==========================")
                 self.event.clear()
-                print("Someone wake me uup ==========================")

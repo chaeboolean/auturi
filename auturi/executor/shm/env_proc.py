@@ -1,11 +1,6 @@
 import multiprocessing as mp
-import time
-from typing import Callable, List
 
-import numpy as np
-
-import auturi.executor.shm.util as util
-from auturi.executor.environment import AuturiEnv, AuturiSerialEnv
+from auturi.executor.environment import AuturiSerialEnv
 from auturi.executor.shm.mixin import SHMProcMixin
 
 
@@ -29,7 +24,7 @@ class ENV_STATE:
     STEP_DONE = 1  # Newly arrived requests
     QUEUED = 2  # Inside Server side waiting queue
     POLICY_DONE = 3  # Processed requests
-    POLICY_OFFSET = 40  # offset => ASSINGED
+    POLICY_OFFSET = 40  # offset => ASSIGNED
 
 
 class SHMEnvProc(mp.Process, SHMProcMixin):
@@ -69,8 +64,6 @@ class SHMEnvProc(mp.Process, SHMProcMixin):
         elif state == ENV_STATE.POLICY_DONE:
             action, artifacts = self.get_actions()
             obs = self.env.step((action, artifacts))
-            print(f"SHMEnv{self.worker_id}: CMD=RUN_STEP action={action} => obs={obs}")
-
             self.insert_obs_buffer(obs)
             self._set_state(ENV_STATE.STEP_DONE)
 
@@ -89,24 +82,18 @@ class SHMEnvProc(mp.Process, SHMProcMixin):
                 return cmd
 
             elif cmd == ENV_COMMAND.SET_ENV:
-                print(f"Env({self.worker_id}) SET ENV!!!")
                 self._assert_state(ENV_STATE.STOPPED)
                 self.env.set_working_env(int(data1_), int(data2_))
                 self._set_cmd_done()
-                print("gonna return~~~~ ")
                 return cmd
 
             elif cmd == ENV_COMMAND.SEED:
-                print(f"Env({self.worker_id}) SEED!!!")
-
                 self._assert_state(ENV_STATE.STOPPED)
                 self.env.seed(int(data1_))
                 self._set_cmd_done()
                 return cmd
 
             elif cmd == ENV_COMMAND.RESET:
-                print(f"Env({self.worker_id}) RESET!!!")
-
                 self._assert_state(ENV_STATE.STOPPED)
                 obs = self.env.reset()
                 self.insert_obs_buffer(obs)

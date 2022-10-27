@@ -1,10 +1,8 @@
 import multiprocessing as mp
-from typing import Any, Callable, Dict, List
 
 import numpy as np
 
 import auturi.executor.shm.env_proc as env_proc
-import auturi.executor.shm.util as util
 from auturi.executor.policy import AuturiPolicy
 from auturi.executor.shm.mixin import SHMProcMixin
 
@@ -51,13 +49,10 @@ class SHMPolicyProc(mp.Process, SHMProcMixin):
                 == self.worker_id + env_proc.ENV_STATE.POLICY_OFFSET
             )[0]
 
-            print(f"######## Policy assigned! ", assigned_env_ids)
-
             assert len(assigned_env_ids) > 0
-
             obs = self.obs_buffer[assigned_env_ids, :]
             actions, artifacts = self.policy.compute_actions(obs, n_steps=1)
-            print(f"######## Policy computed Action!!!!! ", actions.flat[0])
+            print(f"Pol{self.worker_id} got {obs[:, 0, 0]}")
 
             # artifacts = np.stack(artifacts, -1)
 

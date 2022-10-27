@@ -1,6 +1,5 @@
 import multiprocessing as mp
-import time
-from typing import Any, Callable, Dict, List
+from typing import Any, Dict, List
 
 import numpy as np
 import torch.nn as nn
@@ -67,27 +66,20 @@ class SHMVectorPolicy(AuturiVectorPolicy, SHMVectorMixin):
             ready_policies = np.where(self.policy_buffer[:, 1] == POLICY_STATE.READY)[0]
             if len(ready_policies) > 0:
                 policy_id = ready_policies[0]
-                print(f"\n\n Assign: {env_ids} => ", policy_id)
-                self.policy_buffer[policy_id, 1] = POLICY_STATE.ASSIGNED
-
+                # print(f"\n\n Assign: {np.sort(env_ids)} => ", policy_id)
                 self.env_buffer[env_ids, 1] = (
                     policy_id + env_proc.ENV_STATE.POLICY_OFFSET
                 )
+                self.policy_buffer[policy_id, 1] = POLICY_STATE.ASSIGNED
+
                 return None
-            time.sleep(1)
-            print(ready_policies, self.policy_buffer[0, :])
 
     def start_loop(self):
         self._wait_command_done()
         self._set_command(POLICY_COMMAND.START_LOOP)
 
     def stop_loop(self):
-        while not np.all(
-            np.ma.mask_or(
-                (self._get_state() == POLICY_STATE.READY),
-                (self._get_state() == POLICY_STATE.STOPPED),
-            )
-        ):
+        while not np.all(self._get_state() == POLICY_STATE.READY):
             pass
 
         self._set_command(POLICY_COMMAND.STOP_LOOP, set_event=False)
