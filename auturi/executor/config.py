@@ -24,7 +24,7 @@ class ActorConfig:
 
     def __post_init__(self):
         """Validate configurations."""
-        assert self.policy_device in ["cpu", "cuda"]
+        # assert self.policy_device in ["cpu", "cuda"]
         assert self.num_envs % self.num_parallel == 0
         assert self.num_policy * self.batch_size <= self.num_envs
 

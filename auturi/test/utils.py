@@ -9,7 +9,6 @@ import ray
 import torch
 
 from auturi.executor import create_actor_args
-from auturi.executor.actor import AuturiActor
 from auturi.executor.environment import AuturiEnv
 from auturi.executor.policy import AuturiPolicy
 
@@ -142,17 +141,16 @@ def create_vector_policy():
     model = torch.nn.Linear(10, 10, bias=False)
     model.eval()
     torch.nn.init.uniform_(model.weight, 1, 1)
-    return model, DumbPolicy, {}
+    return model, DumbPolicy, {"idx": 0}
 
 
-def create_actor(num_envs, backend="ray"):
+def get_create_fn(num_envs, backend="ray"):
     env_fns = create_env_fns(num_envs)
     model, policy_cls, policy_kwargs = create_vector_policy()
     test_env_fn, test_policy_fn = create_actor_args(
         env_fns, policy_cls, policy_kwargs, backend
     )
-    actor = AuturiActor(test_env_fn, test_policy_fn)
-    return actor, model
+    return test_env_fn, test_policy_fn, model
 
 
 @ray.remote

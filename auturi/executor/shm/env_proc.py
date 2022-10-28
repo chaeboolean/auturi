@@ -54,7 +54,13 @@ class SHMEnvProc(mp.Process, SHMProcMixin):
         self.env.terminate()
 
     def aggregate(self, start_idx, end_idx):
-        pass
+        local_rollouts = self.env.aggregate_rollouts()
+        for _key, trajectories in local_rollouts.items():
+            roll_buffer = getattr(self, f"roll{_key}_buffer")
+            print(
+                f"{_key}: I have {len(trajectories)} but {end_idx - start_idx} requested"
+            )
+            np.copyto(roll_buffer[start_idx:end_idx], trajectories)
 
     def insert_obs_buffer(self, obs):
         self.obs_buffer[self.env.start_idx : self.env.end_idx, :] = obs
@@ -158,33 +164,3 @@ class SHMEnvProc(mp.Process, SHMProcMixin):
         self._set_state(ENV_WORKER_STATE.STOPPED)
         self._set_cmd_done()
         self.main()
-
-    # def aggregate(self, end_idx):
-    #     start_idx = 0
-    #     if self.env_id > 0:
-    #         start_idx = self.command_buffer[self.env_id - 1, 2]
-
-    #     cnt = end_idx - start_idx
-
-    #     local_rollouts = self.env.fetch_rollouts()
-
-    #     for _key, trajectories in local_rollouts.items():
-    #         roll_buffer = getattr(self, f"roll{_key}_buffer")
-    #         try:
-    #             np.stack(
-    #                 trajectories[:cnt],
-    #                 out=roll_buffer[
-    #                     start_idx:end_idx,
-    #                 ],
-    #             )
-
-    #         except Exception as e:
-
-    #             print(
-    #                 f"[{self.env_id}] {_key} Error!!!=> -- out={roll_buffer[start_idx: end_idx, ].shape}"
-    #             )
-    #             print(
-    #                 f"[{self.env_id}] cnt= {cnt}, len={len(trajectories)} => {trajectories[0]}"
-    #             )
-
-    #             raise e

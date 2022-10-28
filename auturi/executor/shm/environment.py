@@ -1,3 +1,4 @@
+import itertools
 import multiprocessing as mp
 from typing import Any, Callable, Dict, List, Tuple
 
@@ -64,7 +65,7 @@ class SHMParallelEnv(AuturiVectorEnv, SHMVectorMixin):
     # Internally call reset.
     def start_loop(self):
         self._wait_command_done()
-        self.env_counter.fill(-1)
+        self.env_counter.fill(0)
         self._set_command(ENV_COMMAND.START_LOOP)
 
     def stop_loop(self):
@@ -126,15 +127,14 @@ class SHMParallelEnv(AuturiVectorEnv, SHMVectorMixin):
 
         return np.copy(self.obs_buffer)
 
-    # Should be called before STOP_LOOP
+    # TODO
     def aggregate_rollouts(self):
-        pass
+        return dict()
 
         # print(f"Before accumul =====> ", self.env_counter)
         # accumulated_counter = list(itertools.accumulate(self.env_counter))
-        # accumulated_counter[-1] = self.rollout_size  # TODO: HACK
 
-        # self.command_buffer[:, 2] = np.array(accumulated_counter)
+        # self.[:, 2] = np.array(accumulated_counter)
         # self._set_command(ENV_COMMAND.AGGREGATE)
         # self._wait_command_done()
 

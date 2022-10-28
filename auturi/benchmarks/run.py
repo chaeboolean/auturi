@@ -1,28 +1,36 @@
 import argparse
 import time
 
-import gym
 import numpy as np
 
-from auturi.tuner import AuturiTuner
-from auturi.executor import AuturiExecutor
-from auturi.vector.ray_backend import RayParallelEnv, RayVectorPolicies
-import auturi.test.utils as utils
+from auturi.benchmarks.task.atari import AtariEnv, AtariPolicy
+from auturi.executor import RayExecutor, create_actor_args
+from auturi.executor.config import ActorConfig, TunerConfig
+
 
 def main():
-    min_num_env = 32
-    max_num_env = 64
+    num_envs = 3
+    env_fns = [lambda: AtariEnv() for _ in range(num_envs)]
 
-    # In real example, user should implement env_fns, model, policy_cls, policy_kwargs.
-    env_fns = utils.create_env_fns(max_num_env)
-    model, policy_cls, policy_kwargs = utils.create_vector_policy()
+    env_create_fn, policy_create_fn = create_actor_args(
+        env_fns, AtariPolicy, dict(), backend="ray"
+    )
 
-    tuner = AuturiTuner(min_num_env=min_num_env, max_num_env=max_num_env)
-    vector_envs = RayParallelEnv(env_fns)
-    vector_policy = RayVectorPolicies(policy_cls, policy_kwargs)
+    executor = RayExecutor(env_create_fn, policy_create_fn, None)
 
-    executor = AuturiExecutor(vector_envs, vector_policy, tuner)   
-    executor.run()
+    # mock "executor.run()", since we do not have tuner yet.
+
+    actor_config = ActorConfig(
+        num_envs=num_envs,
+        num_policy=1,
+        num_parallel=1,
+        batch_size=num_envs,
+        policy_device="cuda:0",
+    )
+    tuner_config = TunerConfig(1, {0: actor_config})
+
+    executor.reconfigure(tuner_config, model=None)
+    rollouts, metric = executor._run(10)
 
 
 if __name__ == "__main__":

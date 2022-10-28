@@ -27,7 +27,7 @@ class RayVectorPolicy(AuturiVectorPolicy):
                 )
                 return super().compute_actions(env_obs, n_steps)
 
-        return RayPolicyWrapper.remote(**self.policy_kwargs, idx=idx)
+        return RayPolicyWrapper.remote(**self.policy_kwargs)
 
     def _load_policy_model(
         self, idx: int, policy: AuturiPolicy, model: nn.Module, device: str
