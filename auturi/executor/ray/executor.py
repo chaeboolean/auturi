@@ -49,6 +49,8 @@ class RayExecutor(AuturiExecutor):
     def _run(self, num_collect: int) -> Tuple[Dict[str, Any], AuturiMetric]:
         util.clear_pending_list(self.pending_actors)
 
+
+        # TODO: divide num_collect by 'num_workers'
         for actor_id, actor in self._working_workers():
             if actor_id == 0:
                 continue

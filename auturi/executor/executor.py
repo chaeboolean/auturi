@@ -43,7 +43,6 @@ class AuturiExecutor(VectorMixin, metaclass=ABCMeta):
 
         # Set configs for each actor.
         for actor_id, actor in self._working_workers():
-            actor = self._get_worker(actor_id)
             self._reconfigure_actor(actor_id, actor, config.get(actor_id), model)
 
     def run(
