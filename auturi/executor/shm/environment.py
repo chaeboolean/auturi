@@ -37,7 +37,7 @@ class SHMParallelEnv(AuturiVectorEnv, SHMVectorMixin):
 
         self.queue = util.WaitingQueue(len(env_fns))
         self.events = dict()
-        self.env_counter = np.array([-1 for _ in range(len(env_fns))])
+        self.env_counter = np.zeros(len(env_fns), dtype=np.int8)
 
         super().__init__(env_fns)
 
@@ -47,6 +47,7 @@ class SHMParallelEnv(AuturiVectorEnv, SHMVectorMixin):
         self.cmd_enum = ENV_COMMAND
 
     def _create_worker(self, idx: int):
+        print("Create worker!!! , ", idx)
         self.events[idx] = mp.Event()
         self.events[idx].clear()
 
@@ -100,9 +101,10 @@ class SHMParallelEnv(AuturiVectorEnv, SHMVectorMixin):
         pass
 
     def terminate(self):
-        self._set_command(ENV_COMMAND.TERMINATE)
+        for wid, p in self._existing_workers():
+            self._set_command(ENV_COMMAND.TERMINATE, worker_id=wid)
 
-        for idx, p in self.remote_workers.items():
+        for wid, p in self._existing_workers():
             p.join()
 
         # Responsible to unlink created shm buffer
@@ -121,7 +123,7 @@ class SHMParallelEnv(AuturiVectorEnv, SHMVectorMixin):
         ):
             pass
 
-        np.copyto(self.action_buffer, action_)
+        np.copyto(self.action_buffer[: self.num_envs, :], action_)
         self.env_buffer[: self.num_envs, 4] = SINGLE_ENV_STATE.POLICY_DONE
         _ = self.poll()  # no need to output
 
@@ -129,18 +131,23 @@ class SHMParallelEnv(AuturiVectorEnv, SHMVectorMixin):
 
     # TODO
     def aggregate_rollouts(self):
-        return dict()
+        acc_ctr = list(itertools.accumulate(self.env_counter))
+        self._wait_command_done()
 
-        # print(f"Before accumul =====> ", self.env_counter)
-        # accumulated_counter = list(itertools.accumulate(self.env_counter))
+        prev_ctr = 0
+        for wid, _ in self._working_workers():
+            cur_ctr = acc_ctr[(wid + 1) * self.num_env_serial - 1]
+            self._set_command(
+                ENV_COMMAND.AGGREGATE, worker_id=wid, data1=prev_ctr, data2=cur_ctr
+            )
+            prev_ctr = cur_ctr
+        self._wait_command_done()
 
-        # self.[:, 2] = np.array(accumulated_counter)
-        # self._set_command(ENV_COMMAND.AGGREGATE)
-        # self._wait_command_done()
+        # TODO: change
+        self.roll_obs_buffer = self.shm_buffer_dict["roll_obs"][1]
+        self.roll_action_buffer = self.shm_buffer_dict["roll_action"][1]
 
-        # ret = dict()
-        # for key, _ in self.rollout_samples.items():
-        #     rollkey = f"roll{key}_buffer"
-        #     ret[key] = np.copy(getattr(self, rollkey))
-
-        # return ret
+        return {
+            "obs": self.roll_obs_buffer[: acc_ctr[-1], :],
+            "action": self.roll_action_buffer[: acc_ctr[-1], :],
+        }

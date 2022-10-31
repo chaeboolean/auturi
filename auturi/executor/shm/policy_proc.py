@@ -68,7 +68,6 @@ class SHMPolicyProc(mp.Process, SHMProcMixin):
 
             elif cmd == POLICY_COMMAND.TERMINATE or cmd == POLICY_COMMAND.STOP_LOOP:
                 self._set_state(POLICY_STATE.STOPPED)
-                self._set_cmd_done()
                 return cmd
 
             elif cmd == POLICY_COMMAND.LOAD_MODEL:
@@ -77,7 +76,6 @@ class SHMPolicyProc(mp.Process, SHMProcMixin):
 
                 # TODO: should give model as argument.
                 self.policy.load_model(None, device)
-                self._set_cmd_done()
                 return cmd
 
     def run(self):

@@ -84,6 +84,8 @@ class SHMVectorPolicy(AuturiVectorPolicy, SHMVectorMixin):
         self._wait_command_done()
 
     def terminate(self):
-        self._set_command(POLICY_COMMAND.TERMINATE)
-        for idx, p in self.remote_workers.items():
+        for wid, p in self._existing_workers():
+            self._set_command(POLICY_COMMAND.TERMINATE, worker_id=wid)
+
+        for wid, p in self._existing_workers():
             p.join()

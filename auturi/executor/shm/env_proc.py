@@ -56,10 +56,10 @@ class SHMEnvProc(mp.Process, SHMProcMixin):
     def aggregate(self, start_idx, end_idx):
         local_rollouts = self.env.aggregate_rollouts()
         for _key, trajectories in local_rollouts.items():
-            roll_buffer = getattr(self, f"roll{_key}_buffer")
-            print(
-                f"{_key}: I have {len(trajectories)} but {end_idx - start_idx} requested"
-            )
+            roll_buffer = getattr(self, f"roll_{_key}_buffer")
+            # print(
+            #     f"Roll key: {_key}: I have {len(trajectories)} but {end_idx - start_idx} requested"
+            # )
             np.copyto(roll_buffer[start_idx:end_idx], trajectories)
 
     def insert_obs_buffer(self, obs):
@@ -121,37 +121,31 @@ class SHMEnvProc(mp.Process, SHMProcMixin):
             elif cmd == ENV_COMMAND.STOP_LOOP:
                 self.wait_to_stop()  # wait until all simulators stop.
                 self._set_state(ENV_WORKER_STATE.STOPPED)
-                self._set_cmd_done()
                 return cmd
 
             elif cmd == ENV_COMMAND.TERMINATE:
                 self._assert_state(ENV_WORKER_STATE.STOPPED)
-                self._set_cmd_done()
                 return cmd
 
             elif cmd == ENV_COMMAND.SET_ENV:
                 self._assert_state(ENV_WORKER_STATE.STOPPED)
                 self.env.set_working_env(int(data1_), int(data2_))
-                self._set_cmd_done()
                 return cmd
 
             elif cmd == ENV_COMMAND.SEED:
                 self._assert_state(ENV_WORKER_STATE.STOPPED)
                 self.env.seed(int(data1_))
-                self._set_cmd_done()
                 return cmd
 
             elif cmd == ENV_COMMAND.RESET:
                 self._assert_state(ENV_WORKER_STATE.STOPPED)
                 obs = self.env.reset()
                 self.insert_obs_buffer(obs)
-                self._set_cmd_done()
                 return cmd
 
             elif cmd == ENV_COMMAND.AGGREGATE:
                 self._assert_state(ENV_WORKER_STATE.STOPPED)
                 self.aggregate(int(data1_), int(data2_))
-                self._set_cmd_done()
                 return cmd
 
             else:
@@ -164,3 +158,4 @@ class SHMEnvProc(mp.Process, SHMProcMixin):
         self._set_state(ENV_WORKER_STATE.STOPPED)
         self._set_cmd_done()
         self.main()
+        print(f"{self.worker_id} ^^GOGo~~~~ BREAK the rulex")

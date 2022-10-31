@@ -42,6 +42,12 @@ class VectorMixin(metaclass=ABCMeta):
         for worker_id in range(0, self.num_workers):
             yield worker_id, self._get_worker(worker_id)
 
+    def _existing_workers(self) -> Tuple[int, T]:
+        """Iterates all current alive workers."""
+        yield 0, self._get_worker(0)
+        for worker_id, worker in self.remote_workers.items():
+            yield worker_id, worker
+
     def start_loop(self):
         """Setup before running collection loop."""
         pass

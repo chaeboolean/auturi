@@ -46,7 +46,7 @@ class SHMVectorMixin:
         )
 
         for wid in wids:
-            assert not self.events[wid].is_set()
+            assert not self.events[wid].is_set(), f"{wid} Event is already set..."
             self.events[wid].set()
 
     def _get_slice(self, worker_id: int = -1):
@@ -91,3 +91,4 @@ class SHMProcMixin:
                 break
             else:
                 self.event.clear()
+                self._set_cmd_done()
