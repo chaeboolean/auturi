@@ -1,42 +1,98 @@
+import functools
+from auturi.executor.config import ActorConfig, TunerConfig
+
+import numpy as np
 import torch as th
 from stable_baselines3.common.on_policy_algorithm import OnPolicyAlgorithm
 from stable_baselines3.common.utils import obs_as_tensor
 
+from auturi.adapter.sb3.env_adapter import SB3EnvAdapter
 from auturi.adapter.sb3.policy_adapter import SB3PolicyAdapter
-from auturi.executor import AuturiEngine
+from auturi.executor.environment import AuturiVectorEnv
+from auturi.executor.ray import create_ray_executor
 from auturi.tuner import AuturiTuner
-from auturi.typing.environment import AuturiVectorEnv
-from auturi.vector.ray_backend import RayVectorPolicies
-from auturi.vector.shm_policy import SHMVectorPolicies
+
+SAVE_MODEL_PATH = "log/model_save.pt"
 
 
-class SB3OnPolicyAlgorithmEngine(AuturiEngine):
-    def _setup(self, rollout_buffer):
-        self.rollout_buffer = rollout_buffer
+def create_mock_tuner(config_list):
+    class _MockTuner(AuturiTuner):
+        """Just generate pre-defined TunerConfigs."""
 
-    def begin_collection_loop(self):
-        return super().begin_collection_loop()
+        def __init__(self):
+            self._ctr = 0
+            self.configs = config_list
 
-    def finish_collection_loop(self):
-        """_summary_"""
-        # Aggregate buffers from all policy workers.
+        def next(self):
+            next_config = self.configs[self._ctr]
+            self._ctr += 1
+            return next_config
 
-        last_server = self.vector_policy.get_last_server()
-        new_obs = last_server.new_obs
-        dones = last_server.last_dones
+    return _MockTuner()
+
+
+def process_buffer(agg_buffer, policy, gamma):
+    # process reward from terminal observations
+    terminal_indices = np.where(agg_buffer["has_terminal_obs"] == True)[0]
+
+    # agg_buffer is totally CPU buffer
+    if len(terminal_indices) > 0:
+        terminal_obs = agg_buffer["terminal_obs"][terminal_indices]
+        terminal_obs = policy.obs_to_tensor(terminal_obs)[0]
 
         with th.no_grad():
-            # Compute value for the last timestep
-            values = self.policy.predict_values(obs_as_tensor(new_obs, self.device))
+            terminal_value = policy.predict_values(terminal_obs)
 
-        self.rollout_buffer.compute_returns_and_advantage(
-            last_values=values, dones=dones
+        agg_buffer["reward"][terminal_indices] += gamma * (
+            terminal_value.numpy().flatten()
         )
 
 
-def wrap_sb3_OnPolicyAlgorithm(
-    sb3_algo: OnPolicyAlgorithm, tuner: AuturiTuner, backend: str = "ray"
-):
+def insert_as_buffer(rollout_buffer, agg_buffer, num_envs):
+
+    # insert to rollout_buffer
+    bsize = rollout_buffer.buffer_size
+    total_length = bsize * num_envs
+
+    def _truncate_and_reshape(buffer_, add_dim=False, dtype=np.float32):
+        shape_ = (bsize, num_envs, -1) if add_dim else (bsize, num_envs)
+        ret = buffer_[:total_length].reshape(*shape_)
+        return ret.astype(dtype)
+
+    # reshape to (k, self.n_envs, obs_size)
+    rollout_buffer.observations = _truncate_and_reshape(agg_buffer["obs"], add_dim=True)
+    rollout_buffer.actions = _truncate_and_reshape(agg_buffer["action"], add_dim=True)
+    rollout_buffer.rewards = _truncate_and_reshape(agg_buffer["reward"], add_dim=False)
+    rollout_buffer.episode_starts = _truncate_and_reshape(
+        agg_buffer["episode_start"], add_dim=False
+    )
+    rollout_buffer.values = _truncate_and_reshape(agg_buffer["value"], add_dim=False)
+    rollout_buffer.log_probs = _truncate_and_reshape(
+        agg_buffer["log_prob"], add_dim=False
+    )
+    rollout_buffer.pos = rollout_buffer.buffer_size
+    rollout_buffer.full = True
+
+
+def _collect_rollouts_auturi(sb3_algo, env, callback, rollout_buffer, n_rollout_steps):
+
+    print("here!!! ")
+    # Save trained policy network
+    sb3_algo.policy.save(sb3_algo._save_model_path)
+
+    num_envs = len(sb3_algo.env_fns)
+    num_collect = n_rollout_steps * num_envs
+    agg_rollouts, metric = sb3_algo._auturi_executor._run(num_collect=num_collect)
+
+    process_buffer(agg_rollouts, sb3_algo.policy, sb3_algo.gamma)
+    insert_as_buffer(rollout_buffer, agg_rollouts, num_envs)  # TODO
+    last_obs = rollout_buffer.observations[-1]
+    last_dones = rollout_buffer.episode_starts[-1]
+
+    return last_obs, last_dones
+
+
+def wrap_sb3_OnPolicyAlgorithm(sb3_algo: OnPolicyAlgorithm, backend: str = "ray"):
     """Use wrapper like this
 
     algo = sb3.create_algorithm(configs)
@@ -46,29 +102,33 @@ def wrap_sb3_OnPolicyAlgorithm(
 
     """
     assert isinstance(sb3_algo, OnPolicyAlgorithm), "Not implemented for other case."
+    assert hasattr(sb3_algo, "env_fns")
+    assert hasattr(sb3_algo, "policy_class")
 
-    # create engine with
-    assert isinstance(sb3_algo.env, AuturiVectorEnv)
-
-    def policy_creator():
-        return SB3PolicyAdapter(
-            observation_space=sb3_algo.env.observation_space,
-            action_space=sb3_algo.env.action_space,
-            model_cls=sb3_algo.policy_class,
-            use_sde=sb3_algo.use_sde,
-            sde_sample_freq=sb3_algo.sde_sample_freq,
-            model_path=sb3_algo.policy_save_path,
-        )
-
-    vecpol_cls = RayVectorPolicies if backend == "ray" else SHMVectorPolicies
-    vecpol_kwargs = {
-        "num_policies": 1,  # tuner.max_policy
-        "policy_fn": policy_creator,
+    auturi_env_fns = [lambda: SB3EnvAdapter(env_fn) for env_fn in sb3_algo.env_fns]
+    policy_kwargs = {
+        "observation_space": sb3_algo.observation_space,
+        "action_space": sb3_algo.action_space,
+        "model_cls": sb3_algo.policy_class,
+        "use_sde": sb3_algo.use_sde,
+        "sde_sample_freq": sb3_algo.sde_sample_freq,
+        "model_path": SAVE_MODEL_PATH,
     }
-    if backend != "ray":
-        vecpol_kwargs["shm_config"] = sb3_algo.env.shm_configs
 
-    vector_policy = vecpol_cls(**vecpol_kwargs)
+    executor = create_ray_executor(
+        env_fns=auturi_env_fns,
+        policy_cls=SB3PolicyAdapter,
+        policy_kwargs=policy_kwargs,
+        tuner=None, # no tuner
+    )
+    
+    actor_config = ActorConfig()
+    next_config = TunerConfig(num_actors=1, actor_config_map={0: actor_config})
+    executor.reconfigure(next_config, sb3_algo.policy)
 
-    engine = AuturiEngine(sb3_algo.env, vector_policy, tuner)
-    sb3_algo.set_auturi_engine(engine)
+    sb3_algo._auturi_executor = executor
+    sb3_algo._save_model_path = SAVE_MODEL_PATH
+    sb3_algo._collect_rollouts_fn = functools.partial(
+        _collect_rollouts_auturi, sb3_algo
+    )
+    sb3_algo.env.close()

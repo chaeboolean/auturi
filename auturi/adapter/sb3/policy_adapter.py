@@ -3,10 +3,9 @@ from typing import Callable
 
 import gym
 import torch as th
-from stable_baselines3.common.buffers import DictRolloutBuffer, RolloutBuffer
 from stable_baselines3.common.utils import obs_as_tensor
 
-from auturi.typing.policy import AuturiPolicy
+from auturi.executor.policy import AuturiPolicy
 
 """ 
 Fit abstraction to Auturi Collection Loop Imple, as described below.
@@ -50,7 +49,7 @@ class SB3PolicyAdapter(AuturiPolicy):
         self.sde_sample_freq = sde_sample_freq
 
     # Called at the beginning of collection loop
-    def load_model(self, device="cpu"):
+    def load_model(self, model, device="cpu"):
         self.policy_model = self.policy_model_cls.load(self.model_path, device=device)
         self.policy_model.set_training_mode(False)
         self.device = device

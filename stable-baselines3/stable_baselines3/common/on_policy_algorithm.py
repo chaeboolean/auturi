@@ -102,6 +102,9 @@ class OnPolicyAlgorithm(BaseAlgorithm):
 
         if _init_setup_model:
             self._setup_model()
+            
+        self._collect_rollouts_fn = self._collect_rollouts_default
+
 
     def _setup_model(self) -> None:
         self._setup_lr_schedule()
@@ -151,13 +154,27 @@ class OnPolicyAlgorithm(BaseAlgorithm):
         # Switch to eval mode (this affects batch norm / dropout)
         self.policy.set_training_mode(False)
 
-        n_steps = 0
         rollout_buffer.reset()
         # Sample new weights for the state dependent exploration
         if self.use_sde:
             self.policy.reset_noise(env.num_envs)
 
         callback.on_rollout_start()
+        new_obs, dones = self._collect_rollouts_fn(env, callback,  rollout_buffer, n_rollout_steps)
+
+
+        with th.no_grad():
+            # Compute value for the last timestep
+            values = self.policy.predict_values(obs_as_tensor(new_obs, self.device))
+
+        rollout_buffer.compute_returns_and_advantage(last_values=values, dones=dones)
+
+        callback.on_rollout_end()
+
+        return True
+
+    def _collect_rollouts_default(self, env, callback,  rollout_buffer, n_rollout_steps):
+        n_steps = 0
 
         while n_steps < n_rollout_steps:
             if self.use_sde and self.sde_sample_freq > 0 and n_steps % self.sde_sample_freq == 0:
@@ -208,16 +225,9 @@ class OnPolicyAlgorithm(BaseAlgorithm):
             rollout_buffer.add(self._last_obs, actions, rewards, self._last_episode_starts, values, log_probs)
             self._last_obs = new_obs
             self._last_episode_starts = dones
+        
+        return new_obs, dones
 
-        with th.no_grad():
-            # Compute value for the last timestep
-            values = self.policy.predict_values(obs_as_tensor(new_obs, self.device))
-
-        rollout_buffer.compute_returns_and_advantage(last_values=values, dones=dones)
-
-        callback.on_rollout_end()
-
-        return True
 
     def train(self) -> None:
         """

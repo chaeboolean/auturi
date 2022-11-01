@@ -49,6 +49,8 @@ from rl_zoo3.callbacks import SaveVecNormalizeCallback, TQDMCallback, TrialEvalC
 from rl_zoo3.hyperparams_opt import HYPERPARAMS_SAMPLER
 from rl_zoo3.utils import ALGOS, get_callback_list, get_latest_run_id, get_wrapper_class, linear_schedule
 
+USE_AUTURI = True
+
 
 class ExperimentManager:
     """
@@ -188,7 +190,7 @@ class ExperimentManager:
 
         # Create env to have access to action space for action noise
         n_envs = 1 if self.algo == "ars" or self.optimize_hyperparameters else self.n_envs
-        env = self.create_envs(n_envs, no_log=False)
+        env = self.create_envs(n_envs, no_log=True)
 
         self._hyperparams = self._preprocess_action_noise(hyperparams, saved_hyperparams, env)
 
@@ -207,6 +209,12 @@ class ExperimentManager:
                 device=self.device,
                 **self._hyperparams,
             )
+
+            if USE_AUTURI:
+                from auturi.adapter.sb3.wrapper import wrap_sb3_OnPolicyAlgorithm
+                self.vec_env_class = None # overwrite to default DummyVecEnv
+                model.env_fns = [lambda: self.create_envs(1, no_log=True) for _ in range(n_envs)]
+                wrap_sb3_OnPolicyAlgorithm(model)
 
         self._save_config(saved_hyperparams)
         return model, saved_hyperparams
