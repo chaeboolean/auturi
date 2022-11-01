@@ -61,7 +61,7 @@ class VectorMixin(metaclass=ABCMeta):
         pass
 
 
-def aggregate_partial(partial, already_agg: bool):
+def aggregate_partial(partial, to_stack=False, to_extend=False):
     """Helper function that aggregates worker's remainings, filtering out empty dict.
 
     Assume that all partial elements have same keys.
@@ -70,13 +70,11 @@ def aggregate_partial(partial, already_agg: bool):
     # if already_agg=True, just append & concat
     # if already_agg=False, unpack first and then append
 
-    if already_agg:
-        append_fn = lambda list_, elem_: list_.append(elem_)
-        concat_fn = np.concatenate
-
-    else:
+    concat_fn = np.stack if to_stack else np.concatenate
+    if to_extend:
         append_fn = lambda list_, elem_: list_.extend(elem_)
-        concat_fn = np.stack
+    else:
+        append_fn = lambda list_, elem_: list_.append(elem_)
 
     agg_dict = defaultdict(list)
     dones = list(filter(lambda elem: len(elem) > 0, partial))
@@ -86,7 +84,24 @@ def aggregate_partial(partial, already_agg: bool):
         for key in keys:
             list_ = []
             for done in dones:
+                # print(f"**** ", len(list_), " Try to append, ... ", key)
+
                 append_fn(list_, done[key])
-            agg_dict[key] = concat_fn(list_)
+                # print(f"**** ", len(list_))
+
+            try:
+                agg_dict[key] = concat_fn(list_)
+
+            except:
+                print(
+                    f"Given Args = {len(partial)}, {partial[0]['obs'].shape}, {done[key].shape}"
+                )
+
+                li = []
+                append_fn(li, 3)
+
+                print(f"test--> {li}")
+
+                raise RuntimeError(f"Error!!! {key}, {len(list_)}")
 
     return agg_dict

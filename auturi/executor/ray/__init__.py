@@ -34,7 +34,10 @@ def create_ray_executor(
     policy_kwargs: Dict[str, Any],
     tuner: AuturiTuner,
 ) -> RayExecutor:
-    create_env_fn, create_policy_fn = create_ray_actor_args(env_fns, policy_cls, policy_kwargs)
+    create_env_fn, create_policy_fn = create_ray_actor_args(
+        env_fns, policy_cls, policy_kwargs
+    )
     return RayExecutor(create_env_fn, create_policy_fn, tuner)
+
 
 __all__ = ["RayParallelEnv", "RayVectorPolicy", "RayExecutor", "create_ray_actor_args"]

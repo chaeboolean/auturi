@@ -3,7 +3,7 @@ Defines typings related to Environment: AuturiEnv, AuturiSerialEnv, AuturiVecEnv
 
 """
 from abc import ABCMeta, abstractmethod
-from typing import Any, Callable, Dict, List, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -32,7 +32,7 @@ class AuturiEnv(metaclass=ABCMeta):
         raise NotImplementedError
 
     @abstractmethod
-    def aggregate_rollouts(self) -> Dict[str, Any]:
+    def aggregate_rollouts(self, to=Optional[np.ndarray]) -> Dict[str, Any]:
         """Aggregates rollout results from remote environments."""
         raise NotImplementedError
 
@@ -56,6 +56,13 @@ class AuturiSerialEnv(AuturiEnv):
         dummy_env = env_fns[0]()
         assert isinstance(dummy_env, AuturiEnv)
         self.setup_with_dummy(dummy_env)
+        dummy_obs = dummy_env.reset()
+        self.agg_fn = (
+            np.stack
+            if dummy_obs.ndim == len(self.observation_space.shape)
+            else np.concatenate
+        )
+
         dummy_env.close()
 
         self.envs = dict()  # maps env_id and AuturiEnv instance
@@ -73,7 +80,7 @@ class AuturiSerialEnv(AuturiEnv):
 
     def reset(self) -> np.ndarray:
         obs_list = [env.reset() for eid, env in self._working_envs()]
-        return np.stack(obs_list)
+        return self.agg_fn(obs_list)
 
     def seed(self, seed) -> None:
         for eid, env in self._working_envs():
@@ -92,11 +99,15 @@ class AuturiSerialEnv(AuturiEnv):
             obs = env.step(actions[eid - self.start_idx], artifacts_)
             obs_list += [obs]
 
-        return np.stack(obs_list)
+        return self.agg_fn(obs_list)
 
-    def aggregate_rollouts(self) -> Dict[str, Any]:
+    def aggregate_rollouts(self, to=None) -> Dict[str, Any]:
         partial_rollouts = [env.aggregate_rollouts() for _, env in self._working_envs()]
-        return aggregate_partial(partial_rollouts, already_agg=False)
+        res = aggregate_partial(partial_rollouts, to_extend=True)
+        # print(f"SerialEnv ===> len rollouts= {len(res)}")
+        # for key, val in res.items():
+        #     print(f"SerialEnv {key}: {val.shape}")
+        return res
 
     def _working_envs(self) -> Tuple[int, AuturiEnv]:
         """Iterates all current working environments."""

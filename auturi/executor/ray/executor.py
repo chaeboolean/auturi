@@ -1,3 +1,4 @@
+import math
 from typing import Any, Callable, Dict, Tuple
 
 import ray
@@ -13,7 +14,7 @@ from auturi.executor.vector_utils import aggregate_partial
 from auturi.tuner import AuturiTuner
 
 
-@ray.remote(num_gpus=0.2)
+@ray.remote
 class RayActorWrapper(AuturiActor):
     """Wrappers run in separated Ray process."""
 
@@ -49,21 +50,21 @@ class RayExecutor(AuturiExecutor):
     def _run(self, num_collect: int) -> Tuple[Dict[str, Any], AuturiMetric]:
         util.clear_pending_list(self.pending_actors)
 
-        # TODO: divide num_collect by 'num_workers'
+        num_collect_per_actor = math.ceil(num_collect / self.num_workers)
         for actor_id, actor in self._working_workers():
             if actor_id == 0:
                 continue
             else:
-                ref = actor.run.remote(num_collect)
+                ref = actor.run.remote(num_collect_per_actor)
                 self.pending_actors[ref] = actor_id
 
         # TODO: Hack
-        local_rollouts, local_metric = self.local_worker.run(num_collect)
+        local_rollouts, local_metric = self.local_worker.run(num_collect_per_actor)
 
         # Aggregate
         remote_rollouts = ray.get(list(self.pending_actors.keys()))
         partial_rollouts = [local_rollouts] + [
             remote_[0] for remote_ in remote_rollouts
         ]
-        agg_rollouts = aggregate_partial(partial_rollouts, already_agg=True)
+        agg_rollouts = aggregate_partial(partial_rollouts)
         return agg_rollouts, local_metric

@@ -84,7 +84,7 @@ class RayParallelEnv(AuturiVectorEnv):
         ]
 
         partial_rollouts = ray.get(partial_rollouts)
-        return aggregate_partial(partial_rollouts, already_agg=True)
+        return aggregate_partial(partial_rollouts)
 
     def start_loop(self):
         self.reset(to_return=False)

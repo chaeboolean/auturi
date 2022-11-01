@@ -41,25 +41,24 @@ class SB3LocalRolloutBuffer:
 
         self.storage["obs"].append(obs)
         self.storage["action"].append(action)
-        self.storage["reward"].append(reward)
+        self.storage["reward"].append(np.array(reward))
 
-        self.storage["episode_start"].append(episode_start)
-        # print(f"value.shape={value.shape} => {value.flatten()}")
-        self.storage["value"].append(value)
-        self.storage["log_prob"].append(log_prob)
+        self.storage["episode_start"].append(np.array(episode_start))
+        self.storage["value"].append(np.array(value))
+        self.storage["log_prob"].append(np.array(log_prob))
 
-        self.storage["has_terminal_obs"].append(terminal_obs is not None)
+        self.storage["has_terminal_obs"].append(np.array([terminal_obs is not None]))
         terminal_obs = np.zeros_like(obs) if terminal_obs is None else terminal_obs
         self.storage["terminal_obs"].append(terminal_obs)
 
         self.counter += 1
 
     def get_local_rollouts(self):
-        if self.counter == 0:
+        if self.counter > 0:
+            self.clear_signal = True
+            return self.storage
+        else:
             return dict()
-
-        self.clear_signal = True
-        return self.storage
 
 
 class SB3EnvAdapter(AuturiEnv):
@@ -90,22 +89,17 @@ class SB3EnvAdapter(AuturiEnv):
     # Should explicitly call reset() before data collection.
     def reset(self):
         self._last_obs = self.env.reset()
-        self._last_episode_starts = True
+        self._last_episode_starts = [True]
         return self._last_obs
-
-    def _step_and_reset(self, actions):
-        observation, reward, done, info = self.env.step(actions)
-        if done:
-            # save final observation where user can get it, then reset
-            info["terminal_observation"] = observation
-            observation = self.env.reset()
-        return observation, reward, done, info
 
     def step(self, actions, action_artifacts):
         """Return only observation, which policy worker needs."""
 
+        assert actions.shape == self.action_space.shape
         values, log_probs = action_artifacts
+
         # Rescale and perform action
+        actions = np.expand_dims(actions, axis=0)
         clipped_actions = actions
         # Clip the actions to avoid out of bound error
         if isinstance(self.action_space, gym.spaces.Box):
@@ -113,7 +107,7 @@ class SB3EnvAdapter(AuturiEnv):
                 actions, self.action_space.low, self.action_space.high
             )
 
-        new_obs, reward, done, info = self._step_and_reset(clipped_actions)
+        new_obs, reward, done, info = self.env.step(clipped_actions)  # all list
 
         if isinstance(self.action_space, gym.spaces.Discrete):
             # Reshape in case of discrete action
@@ -121,19 +115,19 @@ class SB3EnvAdapter(AuturiEnv):
 
         terminal_obs = None
         if (
-            done
-            and info.get("terminal_observation") is not None
-            and info.get("TimeLimit.truncated", False)
+            done[0]
+            and info[0].get("terminal_observation") is not None
+            and info[0].get("TimeLimit.truncated", False)
         ):
-            terminal_obs = info["terminal_observation"]
+            terminal_obs = info[0]["terminal_observation"]
 
         self.local_buffer.add(
             self._last_obs,
             actions,
             reward,
             self._last_episode_starts,
-            values,
-            log_probs,
+            [values],
+            [log_probs],
             terminal_obs,
         )
 
