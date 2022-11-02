@@ -48,7 +48,11 @@ class SB3LocalRolloutBuffer:
         self.storage["log_prob"].append(np.array(log_prob))
 
         self.storage["has_terminal_obs"].append(np.array([terminal_obs is not None]))
-        terminal_obs = np.zeros_like(obs) if terminal_obs is None else terminal_obs
+        terminal_obs = (
+            np.zeros_like(obs)
+            if terminal_obs is None
+            else np.expand_dims(terminal_obs, axis=0)
+        )
         self.storage["terminal_obs"].append(terminal_obs)
 
         self.counter += 1
@@ -62,7 +66,7 @@ class SB3LocalRolloutBuffer:
 
 
 class SB3EnvAdapter(AuturiEnv):
-    def __init__(self, env_fn, normalize=False):
+    def __init__(self, env_fn):
         self.env = env_fn()
         self.action_space = self.env.action_space
         self.observation_space = self.env.observation_space
@@ -71,6 +75,10 @@ class SB3EnvAdapter(AuturiEnv):
         self._last_episode_starts = None
 
         self.local_buffer = SB3LocalRolloutBuffer()
+
+        print(
+            f"obs_space={self.observation_space.shape}, action-space={self.action_space.shape}"
+        )
 
         self.rollout_samples = {
             "obs": self.observation_space.sample(),
@@ -106,7 +114,6 @@ class SB3EnvAdapter(AuturiEnv):
             clipped_actions = np.clip(
                 actions, self.action_space.low, self.action_space.high
             )
-
         new_obs, reward, done, info = self.env.step(clipped_actions)  # all list
 
         if isinstance(self.action_space, gym.spaces.Discrete):

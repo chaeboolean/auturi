@@ -1,6 +1,3 @@
-import auturi.executor.config as types
-
-
 class AuturiTuner(object):
     """
     Online tuning algorithm.
@@ -18,7 +15,4 @@ class AuturiTuner(object):
     # works like generator
     def next(self):
         # TODO: Only a
-        return types.SamplerConfig(
-            bs=self.N,
-            numc=1,
-        )
+        pass

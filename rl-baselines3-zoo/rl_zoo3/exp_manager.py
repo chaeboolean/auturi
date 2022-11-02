@@ -49,7 +49,6 @@ from rl_zoo3.callbacks import SaveVecNormalizeCallback, TQDMCallback, TrialEvalC
 from rl_zoo3.hyperparams_opt import HYPERPARAMS_SAMPLER
 from rl_zoo3.utils import ALGOS, get_callback_list, get_latest_run_id, get_wrapper_class, linear_schedule
 
-USE_AUTURI = True
 def wrap_create_envs(is_atari, env_name, n_envs, vec_cls=None):
     def _wrap():
         if is_atari:
@@ -198,14 +197,13 @@ class ExperimentManager:
         hyperparams, saved_hyperparams = self.read_hyperparameters()
         hyperparams, self.env_wrapper, self.callbacks, self.vec_env_wrapper = self._preprocess_hyperparams(hyperparams)
 
-        self.create_log_folder()
-        self.create_callbacks()
+        # self.create_log_folder()
+        # self.create_callbacks()
 
         # Create env to have access to action space for action noise
         n_envs = 1 if self.algo == "ars" or self.optimize_hyperparameters else self.n_envs
         
-        # env = self.create_envs(n_envs, no_log=True)
-        env = wrap_create_envs(self._is_atari, self.env_name, n_envs, self.vec_env_class)()
+        env = self.create_envs(n_envs, no_log=True)
         self._hyperparams = self._preprocess_action_noise(hyperparams, saved_hyperparams, env)
 
         if self.continue_training:
@@ -224,12 +222,7 @@ class ExperimentManager:
                 **self._hyperparams,
             )
 
-            if USE_AUTURI:
-                from auturi.adapter.sb3.wrapper import wrap_sb3_OnPolicyAlgorithm
-                model.env_fns = [wrap_create_envs(self._is_atari, self.env_name, 1, None) for _ in range(n_envs)]
-                wrap_sb3_OnPolicyAlgorithm(model)
-
-        self._save_config(saved_hyperparams)
+        # self._save_config(saved_hyperparams)
         return model, saved_hyperparams
 
     def learn(self, model: BaseAlgorithm) -> None:
@@ -237,17 +230,17 @@ class ExperimentManager:
         :param model: an initialized RL model
         """
         kwargs = {}
-        if self.log_interval > -1:
-            kwargs = {"log_interval": self.log_interval}
+        # if self.log_interval > -1:
+        #     kwargs = {"log_interval": self.log_interval}
 
-        if len(self.callbacks) > 0:
-            kwargs["callback"] = self.callbacks
+        # if len(self.callbacks) > 0:
+        #     kwargs["callback"] = self.callbacks
 
-        # Special case for ARS
-        if self.algo == "ars" and self.n_envs > 1:
-            kwargs["async_eval"] = AsyncEval(
-                [lambda: self.create_envs(n_envs=1, no_log=True) for _ in range(self.n_envs)], model.policy
-            )
+        # # Special case for ARS
+        # if self.algo == "ars" and self.n_envs > 1:
+        #     kwargs["async_eval"] = AsyncEval(
+        #         [lambda: self.create_envs(n_envs=1, no_log=True) for _ in range(self.n_envs)], model.policy
+        #     )
 
         try:
             model.learn(self.n_timesteps, **kwargs)
@@ -562,8 +555,9 @@ class ExperimentManager:
         :return: the vectorized environment, with appropriate wrappers
         """
         # Do not log eval env (issue with writing the same file)
-        log_dir = None if eval_env or no_log else self.save_path
-
+        # log_dir = None if eval_env or no_log else self.save_path
+        log_dir = None
+        
         monitor_kwargs = {}
         # Special case for GoalEnvs: log success rate too
         if (

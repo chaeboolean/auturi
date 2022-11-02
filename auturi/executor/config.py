@@ -29,6 +29,7 @@ class ActorConfig:
         assert self.num_policy * self.batch_size <= self.num_envs
 
         num_env_serial = self.num_envs // self.num_parallel
+        assert num_env_serial > 0
         assert self.batch_size >= num_env_serial
 
 

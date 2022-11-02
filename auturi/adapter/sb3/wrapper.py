@@ -7,27 +7,9 @@ from stable_baselines3.common.on_policy_algorithm import OnPolicyAlgorithm
 
 from auturi.adapter.sb3.env_adapter import SB3EnvAdapter
 from auturi.adapter.sb3.policy_adapter import SB3PolicyAdapter
-from auturi.executor.config import ActorConfig, TunerConfig
 from auturi.executor.ray import create_ray_executor
-from auturi.tuner import AuturiTuner
 
 SAVE_MODEL_PATH = "log/model_save.pt"
-
-
-def create_mock_tuner(config_list):
-    class _MockTuner(AuturiTuner):
-        """Just generate pre-defined TunerConfigs."""
-
-        def __init__(self):
-            self._ctr = 0
-            self.configs = config_list
-
-        def next(self):
-            next_config = self.configs[self._ctr]
-            self._ctr += 1
-            return next_config
-
-    return _MockTuner()
 
 
 def process_buffer(agg_buffer, policy, gamma):
@@ -43,7 +25,7 @@ def process_buffer(agg_buffer, policy, gamma):
             terminal_value = policy.predict_values(terminal_obs)
 
         agg_buffer["reward"][terminal_indices] += gamma * (
-            terminal_value.numpy().flatten()
+            terminal_value.cpu().numpy().flatten()
         )
 
 
@@ -52,8 +34,6 @@ def insert_as_buffer(rollout_buffer, agg_buffer, num_envs):
     # insert to rollout_buffer
     bsize = rollout_buffer.buffer_size
     total_length = bsize * num_envs
-
-    print(f"insert_as_buffer ====> {list(agg_buffer.keys())}")
 
     def _truncate_and_reshape(buffer_, add_dim=False, dtype=np.float32):
         # print(
@@ -96,7 +76,9 @@ def _collect_rollouts_auturi(sb3_algo, env, callback, rollout_buffer, n_rollout_
     return last_obs, last_dones
 
 
-def wrap_sb3_OnPolicyAlgorithm(sb3_algo: OnPolicyAlgorithm, backend: str = "ray"):
+def wrap_sb3_OnPolicyAlgorithm(
+    sb3_algo: OnPolicyAlgorithm, tuner, backend: str = "ray"
+):
     assert isinstance(sb3_algo, OnPolicyAlgorithm), "Not implemented for other case."
     assert hasattr(sb3_algo, "env_fns")
     assert hasattr(sb3_algo, "policy_class")
@@ -114,30 +96,13 @@ def wrap_sb3_OnPolicyAlgorithm(sb3_algo: OnPolicyAlgorithm, backend: str = "ray"
     num_envs = len(sb3_algo.env_fns)
     num_collect = num_envs * sb3_algo.n_steps
 
-    actor_config = ActorConfig(
-        num_envs=num_envs,
-        num_policy=1,
-        num_parallel=num_envs,
-        batch_size=1,
-        policy_device="cuda:0",  # "cuda",
-    )
-
-    num_actors = len(sb3_algo.env_fns)
-    num_actors = 2
-    next_config = TunerConfig(
-        num_actors=num_actors,
-        actor_config_map={aid: actor_config for aid in range(num_actors)},
-    )
-
     executor = create_ray_executor(
         env_fns=auturi_env_fns,
         policy_cls=SB3PolicyAdapter,
         policy_kwargs=policy_kwargs,
-        tuner=create_mock_tuner([next_config]),  # no tuner
+        tuner=tuner,
         max_rollout_size=num_collect,
     )
-
-    executor.reconfigure(next_config, sb3_algo.policy)
 
     sb3_algo._auturi_executor = executor
     sb3_algo._save_model_path = SAVE_MODEL_PATH
