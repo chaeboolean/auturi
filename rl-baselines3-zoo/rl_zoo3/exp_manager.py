@@ -25,7 +25,7 @@ from sb3_contrib.common.vec_env import AsyncEval
 from stable_baselines3 import HerReplayBuffer  # noqa: F401
 from stable_baselines3.common.base_class import BaseAlgorithm
 from stable_baselines3.common.callbacks import BaseCallback, CheckpointCallback, EvalCallback
-from stable_baselines3.common.env_util import make_vec_env
+from stable_baselines3.common.env_util import make_vec_env, make_atari_env
 from stable_baselines3.common.noise import NormalActionNoise, OrnsteinUhlenbeckActionNoise
 from stable_baselines3.common.preprocessing import is_image_space, is_image_space_channels_first
 from stable_baselines3.common.sb2_compat.rmsprop_tf_like import RMSpropTFLike  # noqa: F401
@@ -50,6 +50,19 @@ from rl_zoo3.hyperparams_opt import HYPERPARAMS_SAMPLER
 from rl_zoo3.utils import ALGOS, get_callback_list, get_latest_run_id, get_wrapper_class, linear_schedule
 
 USE_AUTURI = True
+def wrap_create_envs(is_atari, env_name, n_envs, vec_cls=None):
+    def _wrap():
+        if is_atari:
+            env = make_atari_env(env_name, n_envs=n_envs, seed=0)
+            env = VecFrameStack(env, n_stack=4)
+            env = VecTransposeImage(env)
+        
+        else:
+            env = make_vec_env(env_name, n_envs, vec_env_cls=vec_cls)
+        return env
+    
+    return _wrap
+
 
 
 class ExperimentManager:
@@ -190,8 +203,9 @@ class ExperimentManager:
 
         # Create env to have access to action space for action noise
         n_envs = 1 if self.algo == "ars" or self.optimize_hyperparameters else self.n_envs
-        env = self.create_envs(n_envs, no_log=True)
-
+        
+        # env = self.create_envs(n_envs, no_log=True)
+        env = wrap_create_envs(self._is_atari, self.env_name, n_envs, self.vec_env_class)()
         self._hyperparams = self._preprocess_action_noise(hyperparams, saved_hyperparams, env)
 
         if self.continue_training:
@@ -212,8 +226,7 @@ class ExperimentManager:
 
             if USE_AUTURI:
                 from auturi.adapter.sb3.wrapper import wrap_sb3_OnPolicyAlgorithm
-                self.vec_env_class = None # overwrite to default DummyVecEnv
-                model.env_fns = [lambda: self.create_envs(1, no_log=True) for _ in range(n_envs)]
+                model.env_fns = [wrap_create_envs(self._is_atari, self.env_name, 1, None) for _ in range(n_envs)]
                 wrap_sb3_OnPolicyAlgorithm(model)
 
         self._save_config(saved_hyperparams)

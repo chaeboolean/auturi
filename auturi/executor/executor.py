@@ -64,3 +64,6 @@ class AuturiExecutor(VectorMixin, metaclass=ABCMeta):
     def _run(self, num_collect: int) -> Tuple[Dict[str, Any], AuturiMetric]:
         """Run each actor."""
         raise NotImplementedError
+
+    def terminate(self):
+        pass

@@ -47,9 +47,11 @@ class SB3PolicyAdapter(AuturiPolicy):
         self.action_space = action_space
         self.use_sde = use_sde
         self.sde_sample_freq = sde_sample_freq
+        self.device = "cpu"
 
     # Called at the beginning of collection loop
     def load_model(self, model, device="cpu"):
+
         self.policy_model = self.policy_model_cls.load(self.model_path, device=device)
         self.policy_model.set_training_mode(False)
         self.device = device

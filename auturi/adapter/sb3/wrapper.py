@@ -1,4 +1,5 @@
 import functools
+import time
 
 import numpy as np
 import torch as th
@@ -55,10 +56,10 @@ def insert_as_buffer(rollout_buffer, agg_buffer, num_envs):
     print(f"insert_as_buffer ====> {list(agg_buffer.keys())}")
 
     def _truncate_and_reshape(buffer_, add_dim=False, dtype=np.float32):
-        print(
-            f"_truncate_and_reshape(buffer:{buffer_.shape}) & total_length={total_length}"
-        )
-        shape_ = (bsize, num_envs, -1) if add_dim else (bsize, num_envs)
+        # print(
+        #     f"_truncate_and_reshape(buffer:{buffer_.shape}) & total_length={total_length} -->"
+        # )
+        shape_ = (bsize, num_envs, *buffer_.shape[1:]) if add_dim else (bsize, num_envs)
         ret = buffer_[:total_length].reshape(*shape_)
         return ret.astype(dtype)
 
@@ -84,7 +85,6 @@ def _collect_rollouts_auturi(sb3_algo, env, callback, rollout_buffer, n_rollout_
 
     num_envs = len(sb3_algo.env_fns)
     num_collect = n_rollout_steps * num_envs
-    # num_collect = 10
     agg_rollouts, metric = sb3_algo._auturi_executor._run(num_collect=num_collect)
     print("\n\n Rollout ends... = ", agg_rollouts["terminal_obs"].shape)
 
@@ -97,14 +97,6 @@ def _collect_rollouts_auturi(sb3_algo, env, callback, rollout_buffer, n_rollout_
 
 
 def wrap_sb3_OnPolicyAlgorithm(sb3_algo: OnPolicyAlgorithm, backend: str = "ray"):
-    """Use wrapper like this
-
-    algo = sb3.create_algorithm(configs)
-    tuner = auturi.Tuner(**uturi_configs)
-    wrap_sb3(algo, tuner)
-    algo.learn()
-
-    """
     assert isinstance(sb3_algo, OnPolicyAlgorithm), "Not implemented for other case."
     assert hasattr(sb3_algo, "env_fns")
     assert hasattr(sb3_algo, "policy_class")
@@ -119,27 +111,32 @@ def wrap_sb3_OnPolicyAlgorithm(sb3_algo: OnPolicyAlgorithm, backend: str = "ray"
         "model_path": SAVE_MODEL_PATH,
     }
 
-    executor = create_ray_executor(
-        env_fns=auturi_env_fns,
-        policy_cls=SB3PolicyAdapter,
-        policy_kwargs=policy_kwargs,
-        tuner=None,  # no tuner
-    )
-
     num_envs = len(sb3_algo.env_fns)
+    num_collect = num_envs * sb3_algo.n_steps
+
     actor_config = ActorConfig(
         num_envs=num_envs,
         num_policy=1,
         num_parallel=num_envs,
-        batch_size=2,
-        policy_device="cuda",
+        batch_size=1,
+        policy_device="cuda:0",  # "cuda",
     )
 
     num_actors = len(sb3_algo.env_fns)
+    num_actors = 2
     next_config = TunerConfig(
         num_actors=num_actors,
         actor_config_map={aid: actor_config for aid in range(num_actors)},
     )
+
+    executor = create_ray_executor(
+        env_fns=auturi_env_fns,
+        policy_cls=SB3PolicyAdapter,
+        policy_kwargs=policy_kwargs,
+        tuner=create_mock_tuner([next_config]),  # no tuner
+        max_rollout_size=num_collect,
+    )
+
     executor.reconfigure(next_config, sb3_algo.policy)
 
     sb3_algo._auturi_executor = executor
@@ -148,6 +145,3 @@ def wrap_sb3_OnPolicyAlgorithm(sb3_algo: OnPolicyAlgorithm, backend: str = "ray"
         _collect_rollouts_auturi, sb3_algo
     )
     sb3_algo.env.close()
-
-    num_collect = num_envs * sb3_algo.n_steps
-    print(f"Initialize Auturi. Given num_envs = {num_envs}, num_collect={num_collect}")

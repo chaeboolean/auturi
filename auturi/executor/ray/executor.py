@@ -14,7 +14,7 @@ from auturi.executor.vector_utils import aggregate_partial
 from auturi.tuner import AuturiTuner
 
 
-@ray.remote
+@ray.remote(num_gpus=0.1)
 class RayActorWrapper(AuturiActor):
     """Wrappers run in separated Ray process."""
 

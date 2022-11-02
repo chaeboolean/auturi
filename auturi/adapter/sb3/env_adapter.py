@@ -139,7 +139,7 @@ class SB3EnvAdapter(AuturiEnv):
     def aggregate_rollouts(self):
         return self.local_buffer.get_local_rollouts()
 
-    def close(self):
+    def terminate(self):
         self.env.close()
 
     def seed(self, seed):

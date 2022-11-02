@@ -24,6 +24,10 @@ class AuturiEnv(metaclass=ABCMeta):
         raise NotImplementedError
 
     @abstractmethod
+    def terminate(self):
+        raise NotImplementedError
+
+    @abstractmethod
     def reset(self):
         raise NotImplementedError
 
@@ -63,7 +67,7 @@ class AuturiSerialEnv(AuturiEnv):
             else np.concatenate
         )
 
-        dummy_env.close()
+        dummy_env.terminate()
 
         self.envs = dict()  # maps env_id and AuturiEnv instance
         self.start_idx, self.end_idx, self.num_envs = -1, -1, 0
@@ -88,7 +92,7 @@ class AuturiSerialEnv(AuturiEnv):
 
     def terminate(self):
         for eid, env in self.envs.items():  # terminate not only working envs.
-            env.close()
+            env.terminate()
 
     def step(self, action_ref):
         obs_list = []
@@ -125,7 +129,7 @@ class AuturiVectorEnv(VectorMixin, AuturiEnv, metaclass=ABCMeta):
         dummy_env = env_fns[0]()
         assert isinstance(dummy_env, AuturiEnv)
         self.setup_with_dummy(dummy_env)
-        dummy_env.close()
+        dummy_env.terminate()
 
         self.set_vector_attrs()
 

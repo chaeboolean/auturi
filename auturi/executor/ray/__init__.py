@@ -33,6 +33,7 @@ def create_ray_executor(
     policy_cls: Any,
     policy_kwargs: Dict[str, Any],
     tuner: AuturiTuner,
+    max_rollout_size: int,
 ) -> RayExecutor:
     create_env_fn, create_policy_fn = create_ray_actor_args(
         env_fns, policy_cls, policy_kwargs

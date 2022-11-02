@@ -31,22 +31,20 @@ from auturi.executor.environment import AuturiEnv, AuturiVectorEnv
 from auturi.executor.policy import AuturiVectorPolicy
 from auturi.executor.ray import create_ray_actor_args
 from auturi.executor.ray.executor import RayExecutor
-from auturi.executor.shm import create_shm_actor_args
+
+# def create_actor_args(
+#     env_fns: List[Callable[[], AuturiEnv]],
+#     policy_cls: Any,
+#     policy_kwargs: Dict[str, Any],
+#     backend="ray",
+# ) -> Tuple[Callable[[], AuturiVectorEnv], Callable[[], AuturiVectorPolicy]]:
+
+#     create_fn = {
+#         "ray": create_ray_actor_args,
+#         "shm": create_shm_actor_args,
+#     }[backend]
+
+#     return create_fn(env_fns, policy_cls, policy_kwargs)
 
 
-def create_actor_args(
-    env_fns: List[Callable[[], AuturiEnv]],
-    policy_cls: Any,
-    policy_kwargs: Dict[str, Any],
-    backend="ray",
-) -> Tuple[Callable[[], AuturiVectorEnv], Callable[[], AuturiVectorPolicy]]:
-
-    create_fn = {
-        "ray": create_ray_actor_args,
-        "shm": create_shm_actor_args,
-    }[backend]
-
-    return create_fn(env_fns, policy_cls, policy_kwargs)
-
-
-__all__ = ["create_actor_args", "RayExecutor"]
+# __all__ = ["create_actor_args", "RayExecutor"]
