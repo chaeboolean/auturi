@@ -9,7 +9,7 @@ from auturi.adapter.sb3.env_adapter import SB3EnvAdapter
 from auturi.adapter.sb3.policy_adapter import SB3PolicyAdapter
 from auturi.executor.ray import create_ray_executor
 
-SAVE_MODEL_PATH = "log/model_save.pt"
+SAVE_MODEL_PATH = "/home/ooffordable/ray_fork/log/model_save.pt"
 
 
 def process_buffer(agg_buffer, policy, gamma):
@@ -66,7 +66,7 @@ def _collect_rollouts_auturi(sb3_algo, env, callback, rollout_buffer, n_rollout_
     num_envs = len(sb3_algo.env_fns)
     num_collect = n_rollout_steps * num_envs
     agg_rollouts, metric = sb3_algo._auturi_executor._run(num_collect=num_collect)
-    print("\n\n Rollout ends... = ", agg_rollouts["terminal_obs"].shape)
+    print("**** Rollout ends... = ", agg_rollouts["terminal_obs"].shape)
 
     process_buffer(agg_rollouts, sb3_algo.policy, sb3_algo.gamma)
     insert_as_buffer(rollout_buffer, agg_rollouts, num_envs)  # TODO

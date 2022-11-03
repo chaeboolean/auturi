@@ -158,4 +158,3 @@ class SHMEnvProc(mp.Process, SHMProcMixin):
         self._set_state(ENV_WORKER_STATE.STOPPED)
         self._set_cmd_done()
         self.main()
-        print(f"{self.worker_id} ^^GOGo~~~~ BREAK the rulex")

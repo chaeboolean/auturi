@@ -31,6 +31,7 @@ class ActorConfig:
         num_env_serial = self.num_envs // self.num_parallel
         assert num_env_serial > 0
         assert self.batch_size >= num_env_serial
+        assert self.batch_size % num_env_serial == 0 
 
 
 @dataclass
@@ -46,7 +47,7 @@ class TunerConfig:
     num_actors: int
     actor_config_map: Dict[int, ActorConfig]
 
-    def validate(self):
+    def __post_init__(self):
         assert self.num_actors > 0
         assert len(self.actor_config_map) == self.num_actors
 
