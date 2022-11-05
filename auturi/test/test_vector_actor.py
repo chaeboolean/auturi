@@ -10,10 +10,10 @@ from auturi.tuner.config import ActorConfig, TunerConfig
 VECTOR_BACKEND = "ray"
 
 
-def create_vector_actor(mode, num_envs, tuner_config_list):
+def create_vector_actor(mode, num_envs, tuner_config):
     env_fns = utils.create_env_fns(num_envs)
     model, policy_cls, policy_kwargs = utils.create_policy_args()
-    tuner = create_tuner_with_config(num_envs, tuner_config_list)
+    tuner = create_tuner_with_config(num_envs, tuner_config)
     vector_actor = create_executor(env_fns, policy_cls, policy_kwargs, tuner, mode)
 
     return vector_actor, model
@@ -23,7 +23,7 @@ def test_executor_basic():
     num_envs = 1
     actor_config = ActorConfig(num_envs)
     config = TunerConfig(1, {0: actor_config})
-    vector_actor, model = create_vector_actor(VECTOR_BACKEND, num_envs, [config])
+    vector_actor, model = create_vector_actor(VECTOR_BACKEND, num_envs, config)
 
     rollouts, metric = vector_actor.run(model, num_collect=3)
     check_timeout(metric.elapsed, timeout=1.5 * 3)
@@ -34,12 +34,18 @@ def test_multiple_actors():
     num_envs = 9
     actor_config = ActorConfig(num_envs=3, num_parallel=3, batch_size=3)
     config = TunerConfig(3, {0: actor_config, 1: actor_config, 2: actor_config})
-    executor, model = create_vector_actor(VECTOR_BACKEND, num_envs, [config])
+    vector_actor, model = create_vector_actor(VECTOR_BACKEND, num_envs, config)
 
-    rollouts, metric = executor.run(model, num_collect=3)
-
+    rollouts, metric = vector_actor.run(model, num_collect=27)
     check_timeout(metric.elapsed, timeout=1.5 * 3)
-    assert rollouts["obs"].shape == (9, 5, 2)
+    assert rollouts["obs"].shape == (27, 5, 2)
+
+    config = TunerConfig(2, {0: actor_config, 1: actor_config})
+    vector_actor.tuner = create_tuner_with_config(num_envs, config)
+
+    rollouts, metric = vector_actor.run(model, num_collect=18)
+    check_timeout(metric.elapsed, timeout=1.5 * 3)
+    assert rollouts["obs"].shape == (18, 5, 2)
 
 
 # TODO
