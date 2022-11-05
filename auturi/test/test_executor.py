@@ -23,11 +23,7 @@ def create_executor_with_mock_tuner(num_envs, config_list):
 
     tuner = _MockTuner()
 
-<<<<<<< HEAD
-    env_fn, policy_fn, model = utils.get_create_fn(num_envs, "ray")
-=======
     env_fn, policy_fn, model = utils.create_ray_actor_args(num_envs)
->>>>>>> executor runs
     return RayExecutor(env_fn, policy_fn, tuner), model
 
 
