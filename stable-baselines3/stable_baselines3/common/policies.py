@@ -180,6 +180,9 @@ class BaseModel(nn.Module):
             del saved_variables["data"]["sde_net_arch"]
 
         # Create policy object
+        if "ortho_init" in saved_variables["data"]:
+            saved_variables["data"]["ortho_init"] = False
+
         model = cls(**saved_variables["data"])  # pytype: disable=not-instantiable
         # Load weights
         model.load_state_dict(saved_variables["state_dict"])
