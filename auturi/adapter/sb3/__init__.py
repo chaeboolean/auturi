@@ -17,7 +17,9 @@ def _collect_rollouts_auturi(sb3_algo, env, callback, rollout_buffer, n_rollout_
 
     num_envs = len(sb3_algo.env_fns)
     num_collect = n_rollout_steps * num_envs
-    agg_rollouts, metric = sb3_algo._auturi_executor._run(num_collect=num_collect)
+    agg_rollouts, metric = sb3_algo._auturi_executor.run(
+        model=None, num_collect=num_collect
+    )
     print("**** Rollout ends... = ", agg_rollouts["terminal_obs"].shape)
 
     process_buffer(agg_rollouts, sb3_algo.policy, sb3_algo.gamma)

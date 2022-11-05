@@ -46,8 +46,7 @@ def clear_pending_list(pending_list):
 def process_ray_env_output(raw_output: List[object], obs_space: gym.Space):
     """Unpack ray object reference and stack to generate np.array."""
     unpack = [ray.get(ref_) for ref_ in raw_output]
-    # stacking_fn = np.stack if unpack[0].ndim == len(obs_space.shape) else np.concatenate
-    stacking_fn = np.stack
+    stacking_fn = np.stack if unpack[0].ndim == len(obs_space.shape) else np.concatenate
     return _flatten_obs(unpack, obs_space, stacking_fn=stacking_fn)
 
 

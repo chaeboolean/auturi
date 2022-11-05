@@ -14,6 +14,7 @@ def _to_cpu_numpy(tensor):
 class SB3PolicyAdapter(AuturiPolicy):
     def __init__(
         self,
+        idx: int,
         observation_space: gym.Space,
         action_space: gym.Space,
         model_cls: Callable,
@@ -21,6 +22,7 @@ class SB3PolicyAdapter(AuturiPolicy):
         sde_sample_freq: int,
         model_path: str,
     ):
+        self.policy_idx = idx
         self.model_path = model_path
 
         self.policy_model_cls = model_cls

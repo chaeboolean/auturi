@@ -25,21 +25,24 @@ def insert_as_buffer(rollout_buffer, agg_buffer, num_envs):
     bsize = rollout_buffer.buffer_size
     total_length = bsize * num_envs
 
-    def _truncate_and_reshape(buffer_, add_dim=False, dtype=np.float32):
-        shape_ = (bsize, num_envs, *buffer_.shape[1:]) if add_dim else (bsize, num_envs)
-        ret = buffer_[:total_length].reshape(*shape_)
-        return ret.astype(dtype)
+    # Change shape: (num_collect, *) --> (bsize, num_envs, *)
+    def _reshape(buffer_):
+        shape_ = (bsize, num_envs, *(buffer_.shape[1:]))
+        return buffer_[:total_length].reshape(*shape_)
 
     # reshape to (k, self.n_envs, obs_size)
-    rollout_buffer.observations = _truncate_and_reshape(agg_buffer["obs"], add_dim=True)
-    rollout_buffer.actions = _truncate_and_reshape(agg_buffer["action"], add_dim=True)
-    rollout_buffer.rewards = _truncate_and_reshape(agg_buffer["reward"], add_dim=False)
-    rollout_buffer.episode_starts = _truncate_and_reshape(
-        agg_buffer["episode_start"], add_dim=False
+    np.copyto(dst=rollout_buffer.observations, src=_reshape(agg_buffer["obs"]))
+    np.copyto(dst=rollout_buffer.actions, src=_reshape(agg_buffer["action"]))
+    np.copyto(dst=rollout_buffer.rewards, src=_reshape(agg_buffer["reward"]))
+    np.copyto(
+        dst=rollout_buffer.values, src=_reshape(agg_buffer["action_artifacts"][:, 0])
     )
-    rollout_buffer.values = _truncate_and_reshape(agg_buffer["value"], add_dim=False)
-    rollout_buffer.log_probs = _truncate_and_reshape(
-        agg_buffer["log_prob"], add_dim=False
+    np.copyto(
+        dst=rollout_buffer.log_probs, src=_reshape(agg_buffer["action_artifacts"][:, 1])
     )
+    np.copyto(
+        dst=rollout_buffer.episode_starts, src=_reshape(agg_buffer["episode_start"])
+    )
+
     rollout_buffer.pos = rollout_buffer.buffer_size
     rollout_buffer.full = True

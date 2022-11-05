@@ -1,6 +1,5 @@
 import gym
 import numpy as np
-import torch as th
 
 from auturi.executor.environment import AuturiEnv
 
@@ -12,8 +11,7 @@ class SB3LocalRolloutBuffer:
             "action": [],
             "reward": [],
             "episode_start": [],
-            "value": [],
-            "log_prob": [],
+            "action_artifacts": [],  # [value, log_probs]
             "has_terminal_obs": [],
             "terminal_obs": [],
         }
@@ -29,10 +27,10 @@ class SB3LocalRolloutBuffer:
         self,
         obs: np.ndarray,
         action: np.ndarray,
-        reward: np.ndarray,
-        episode_start: np.ndarray,
-        value: np.ndarray,
-        log_prob: th.Tensor,
+        reward: float,
+        episode_start: bool,
+        value: float,
+        log_prob: float,
         terminal_obs: np.ndarray = None,
     ):
         if self.clear_signal:
@@ -41,18 +39,13 @@ class SB3LocalRolloutBuffer:
 
         self.storage["obs"].append(obs)
         self.storage["action"].append(action)
-        self.storage["reward"].append(np.array(reward))
+        self.storage["reward"].append(reward)
 
-        self.storage["episode_start"].append(np.array(episode_start))
-        self.storage["value"].append(np.array(value))
-        self.storage["log_prob"].append(np.array(log_prob))
+        self.storage["episode_start"].append(episode_start)
+        self.storage["action_artifacts"].append(np.array([value, log_prob]))
+        self.storage["has_terminal_obs"].append(terminal_obs is not None)
 
-        self.storage["has_terminal_obs"].append(np.array([terminal_obs is not None]))
-        terminal_obs = (
-            np.zeros_like(obs)
-            if terminal_obs is None
-            else np.expand_dims(terminal_obs, axis=0)
-        )
+        terminal_obs = np.zeros_like(obs) if terminal_obs is None else terminal_obs
         self.storage["terminal_obs"].append(terminal_obs)
 
         self.counter += 1
@@ -68,46 +61,30 @@ class SB3LocalRolloutBuffer:
 class SB3EnvAdapter(AuturiEnv):
     def __init__(self, env_fn):
         self.env = env_fn()
-        self.action_space = self.env.action_space
-        self.observation_space = self.env.observation_space
-        self.metadata = self.env.metadata
+        self.setup_with_dummy(self.env)
+
         self._last_obs = None
-        self._last_episode_starts = None
+        self._last_episode_starts = False
 
         self.local_buffer = SB3LocalRolloutBuffer()
 
-        print(
-            f"obs_space={self.observation_space.shape}, action-space={self.action_space.shape}"
-        )
-
-        self.rollout_samples = {
-            "obs": self.observation_space.sample(),
-            "action": self.action_space.sample(),
-            "reward": 2.31,  # any float32,
-            "episode_start": True,
-            "value": 2.31,
-            "log_prob": 2.31,
-            "has_terminal_obs": True,
-            "terminal_obs": self.observation_space.sample(),
-        }
-
-    def get_rollout_samples(self):
-        return self.rollout_samples
-
     # Should explicitly call reset() before data collection.
     def reset(self):
-        self._last_obs = self.env.reset()
-        self._last_episode_starts = [True]
+        self._last_obs = self.env.reset()[0]
+        self._last_episode_starts = True
+
         return self._last_obs
 
     def step(self, actions, action_artifacts):
         """Return only observation, which policy worker needs."""
 
-        assert actions.shape == self.action_space.shape
-        values, log_probs = action_artifacts
+        # assert actions.shape == self.action_space.shape
+        # process action-related values.
+        if isinstance(self.action_space, gym.spaces.Discrete):
+            # Reshape in case of discrete action
+            actions = actions.reshape(-1)
 
         # Rescale and perform action
-        actions = np.expand_dims(actions, axis=0)
         clipped_actions = actions
         # Clip the actions to avoid out of bound error
         if isinstance(self.action_space, gym.spaces.Box):
@@ -115,26 +92,26 @@ class SB3EnvAdapter(AuturiEnv):
                 actions, self.action_space.low, self.action_space.high
             )
         new_obs, reward, done, info = self.env.step(clipped_actions)  # all list
+        new_obs, reward, done, info = new_obs[0], reward[0], done[0], info[0]  # unpack
 
-        if isinstance(self.action_space, gym.spaces.Discrete):
-            # Reshape in case of discrete action
-            actions = actions.reshape(-1, 1)
-
+        # set terminal_obs
         terminal_obs = None
         if (
-            done[0]
-            and info[0].get("terminal_observation") is not None
-            and info[0].get("TimeLimit.truncated", False)
+            done
+            and info.get("terminal_observation") is not None
+            and info.get("TimeLimit.truncated", False)
         ):
-            terminal_obs = info[0]["terminal_observation"]
+            terminal_obs = info["terminal_observation"]
+
+        values, log_probs = action_artifacts
 
         self.local_buffer.add(
             self._last_obs,
             actions,
             reward,
             self._last_episode_starts,
-            [values],
-            [log_probs],
+            values,
+            log_probs,
             terminal_obs,
         )
 
