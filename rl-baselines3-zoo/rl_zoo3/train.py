@@ -250,10 +250,6 @@ def train():
         # Normal training
         if model is not None:
             exp_manager.learn(model)
-            round_fn = lambda x: round(x, 3)
-            print(f"train_time=> {round_fn(model.training_time)}")
-            print(f"collect_time=> {round_fn(model.collect_time)}")
-            # exp_manager.save_trained_model(model)
-
+            exp_manager.save_trained_model(model)
     else:
         exp_manager.hyperparameters_optimization()

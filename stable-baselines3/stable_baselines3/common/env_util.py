@@ -96,6 +96,7 @@ def make_vec_env(
             return env
 
         return _init
+
     # No custom VecEnv is passed
     if vec_env_cls is None:
         # Default: use a DummyVecEnv
