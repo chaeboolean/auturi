@@ -49,6 +49,8 @@ from rl_zoo3.callbacks import SaveVecNormalizeCallback, TQDMCallback, TrialEvalC
 from rl_zoo3.hyperparams_opt import HYPERPARAMS_SAMPLER
 from rl_zoo3.utils import ALGOS, get_callback_list, get_latest_run_id, get_wrapper_class, linear_schedule
 
+# Add football
+import auturi.benchmarks.tasks.football as football
 
 class ExperimentManager:
     """
@@ -141,6 +143,7 @@ class ExperimentManager:
         self.truncate_last_trajectory = truncate_last_trajectory
 
         self._is_atari = self.is_atari(env_id)
+        self._is_football = env_id in football.scenarios
         # Hyperparameter optimization config
         self.optimize_hyperparameters = optimize_hyperparameters
         self.storage = storage
@@ -285,6 +288,9 @@ class ExperimentManager:
                 hyperparams = hyperparams_dict[self.env_name.gym_id]
             elif self._is_atari:
                 hyperparams = hyperparams_dict["atari"]
+                
+            elif self._is_football:
+                hyperparams = hyperparams_dict["football"]
             else:
                 raise ValueError(f"Hyperparameters not found for {self.algo}-{self.env_name.gym_id}")
 
@@ -480,18 +486,29 @@ class ExperimentManager:
 
     @staticmethod
     def is_atari(env_id: str) -> bool:
-        entry_point = gym.envs.registry.env_specs[env_id].entry_point  # pytype: disable=module-attr
-        return "AtariEnv" in str(entry_point)
-
+        try:
+            entry_point = gym.envs.registry.env_specs[env_id].entry_point  # pytype: disable=module-attr
+            return "AtariEnv" in str(entry_point)
+        except KeyError as e:
+            return False
+    
     @staticmethod
     def is_bullet(env_id: str) -> bool:
-        entry_point = gym.envs.registry.env_specs[env_id].entry_point  # pytype: disable=module-attr
-        return "pybullet_envs" in str(entry_point)
+        try:
+            entry_point = gym.envs.registry.env_specs[env_id].entry_point  # pytype: disable=module-attr
+            return "pybullet_envs" in str(entry_point)
+        except KeyError as e:
+            return False
+
 
     @staticmethod
     def is_robotics_env(env_id: str) -> bool:
-        entry_point = gym.envs.registry.env_specs[env_id].entry_point  # pytype: disable=module-attr
-        return "gym.envs.robotics" in str(entry_point) or "panda_gym.envs" in str(entry_point)
+        try:
+            entry_point = gym.envs.registry.env_specs[env_id].entry_point  # pytype: disable=module-attr
+            return "gym.envs.robotics" in str(entry_point) or "panda_gym.envs" in str(entry_point)
+        except KeyError as e:
+            return False
+
 
     def _maybe_normalize(self, env: VecEnv, eval_env: bool) -> VecEnv:
         """
@@ -552,6 +569,10 @@ class ExperimentManager:
             or "parking-v0" in self.env_name.gym_id
         ):
             monitor_kwargs = dict(info_keywords=("is_success",))
+
+        if self._is_football:
+            env_fns = [football.make_env(self.env_name, rank=i) for i in range(n_envs)]
+            return self.vec_env_class(env_fns, **self.vec_env_kwargs)
 
         # On most env, SubprocVecEnv does not help and is quite memory hungry
         # therefore we use DummyVecEnv by default
