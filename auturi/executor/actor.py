@@ -1,13 +1,14 @@
 import time
 from typing import Any, Callable, Dict, Tuple
 
+import ray
 import torch.nn as nn
 
-from auturi.executor.config import ActorConfig, AuturiMetric
 from auturi.executor.environment import AuturiEnv
 from auturi.executor.policy import AuturiPolicy
+from auturi.tuner.config import ActorConfig, AuturiMetric
 
-import ray
+
 class AuturiActor:
     """AuturiActor is an abstraction of collection loop.
 
@@ -26,14 +27,14 @@ class AuturiActor:
         assert isinstance(self.envs, AuturiEnv)
         assert isinstance(self.policy, AuturiPolicy)
 
-    def reconfigure(self, config: ActorConfig, model: nn.Module):
+    def reconfigure(self, config: ActorConfig, start_env_idx: int, model: nn.Module):
         """Adjust envs and policy by given configs."""
 
         # Adjust Policy
         self.policy.reconfigure(config, model)
 
         # Adjust Environment
-        self.envs.reconfigure(config)
+        self.envs.reconfigure(config, start_env_idx)
 
     def run(self, num_collect: int) -> Tuple[Dict[str, Any], AuturiMetric]:
         """Run collection loop with `num_collect` iterations, and return experience trajectories."""
@@ -45,10 +46,11 @@ class AuturiActor:
         start_time = time.perf_counter()
         while n_steps < num_collect:
             obs_refs = self.envs.poll()
-            #print("obs_res -> ", ray.get(list(obs_refs.values()))[0].shape)
+            # print("obs_res -> ", ray.get(list(obs_refs.values()))[0].shape)
+
             action_refs = self.policy.compute_actions(obs_refs, n_steps)
-            #print("action_refs -> ", ray.get(action_refs)[0].shape)
-            
+            # print("action_refs -> ", ray.get(action_refs)[0].shape)
+
             self.envs.send_actions(action_refs)
 
             n_steps += self.envs.batch_size  # len(obs_refs)

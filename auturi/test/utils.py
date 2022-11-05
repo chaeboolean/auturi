@@ -8,7 +8,6 @@ import numpy as np
 import ray
 import torch
 
-from auturi.executor import create_actor_args
 from auturi.executor.environment import AuturiEnv
 from auturi.executor.policy import AuturiPolicy
 
@@ -89,7 +88,7 @@ class DumbEnv(AuturiEnv):
     def aggregate_rollouts(self):
         return self.storage
 
-    def close(self):
+    def terminate(self):
         pass
 
 
@@ -137,39 +136,11 @@ def create_env_fns(num_envs):
     return [create_fn(idx) for idx in range(num_envs)]
 
 
-def create_vector_policy():
+def create_policy_args():
     model = torch.nn.Linear(10, 10, bias=False)
     model.eval()
     torch.nn.init.uniform_(model.weight, 1, 1)
-    return model, DumbPolicy, {"idx": 0}
-
-
-def get_create_fn(num_envs, backend="ray"):
-    env_fns = create_env_fns(num_envs)
-    model, policy_cls, policy_kwargs = create_vector_policy()
-    test_env_fn, test_policy_fn = create_actor_args(
-        env_fns, policy_cls, policy_kwargs, backend
-    )
-    return test_env_fn, test_policy_fn, model
-
-def create_ray_actor_args(num_envs):
-    def create_env(num_envs):
-        env_fns = create_env_fns(num_envs)
-
-        def _wrap():
-            return RayParallelEnv(env_fns)
-
-        return _wrap
-
-    model, policy_cls, policy_kwargs = create_vector_policy()
-
-    def create_policy(policy_cls, policy_kwargs):
-        def _wrap():
-            return RayVectorPolicy(policy_cls, policy_kwargs)
-
-        return _wrap
-
-    return create_env(num_envs), create_policy(policy_cls, policy_kwargs), model
+    return model, DumbPolicy, dict()
 
 
 @ray.remote

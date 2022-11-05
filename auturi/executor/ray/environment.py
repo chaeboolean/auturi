@@ -17,13 +17,15 @@ class RayEnvWrapper(AuturiSerialEnv):
 
     """
 
-    def step(self, actions_, lid=-1):
-        # action_ref here is already np.nd.array
-        action, action_artifacts = actions_
-        my_action = action[lid : lid + self.num_envs]
-        my_artifacts = [elem[lid : lid + self.num_envs] for elem in action_artifacts]
+    def step(self, action_ref, local_id=-1):
+        # action_ref here is already unpacked.
+        actions, action_artifacts = action_ref
+        my_action = actions[local_id : local_id + self.num_envs]
+        my_artifacts = [
+            elem[local_id : local_id + self.num_envs] for elem in action_artifacts
+        ]
 
-        return super().step([my_action, my_artifacts])
+        return super().step(my_action, my_artifacts)
 
 
 class RayParallelEnv(AuturiVectorEnv):
@@ -61,20 +63,21 @@ class RayParallelEnv(AuturiVectorEnv):
             self.pending_steps[ref] = wid
 
     def poll(self) -> Dict[object, int]:
-        num_to_return = math.ceil(self.batch_size / self.num_env_serial)
-        assert len(self.pending_steps) >= num_to_return
+        assert len(self.pending_steps) >= self.num_worker_to_poll
 
-        done_envs, _ = ray.wait(list(self.pending_steps), num_returns=num_to_return)
+        done_envs, _ = ray.wait(
+            list(self.pending_steps), num_returns=self.num_worker_to_poll
+        )
 
         self.last_output = {
             self.pending_steps.pop(done_envs[i]): done_envs[i]  # (wid, step_ref)
-            for i in range(num_to_return)
+            for i in range(self.num_worker_to_poll)
         }
         return self.last_output
 
     def send_actions(self, action_ref) -> None:
-        for lid, wid in enumerate(self.last_output.keys()):
-            step_ref_ = self._get_worker(wid).step.remote(action_ref, lid)
+        for i, wid in enumerate(self.last_output.keys()):
+            step_ref_ = self._get_worker(wid).step.remote(action_ref, i)
             self.pending_steps[step_ref_] = wid  # update pending list
 
     def aggregate_rollouts(self):
@@ -87,21 +90,23 @@ class RayParallelEnv(AuturiVectorEnv):
         return aggregate_partial(partial_rollouts)
 
     def start_loop(self):
+        util.clear_pending_list(self.pending_steps)
         self.reset(to_return=False)
 
     def stop_loop(self):
         util.clear_pending_list(self.pending_steps)
 
-    def step(self, actions: Tuple[np.ndarray, List[np.ndarray]]):
+    def step(self, action: np.ndarray, action_artifacts: List[np.ndarray]):
         """Synchronous step wrapper, just for debugging purpose."""
-        assert len(actions[0]) == self.num_envs
+        assert len(action) == self.num_envs
         self.batch_size = self.num_envs
 
+        # When step() is first called.
         if len(self.last_output) == 0:
             self.last_output = {wid: None for wid, _ in self._working_workers()}
 
         util.clear_pending_list(self.pending_steps)
-        self.send_actions(util.mock_ray.remote(actions))
+        self.send_actions(util.mock_ray.remote((action, action_artifacts)))
 
         raw_output = self.poll()
         sorted_output = OrderedDict(sorted(raw_output.items()))

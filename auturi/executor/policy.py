@@ -6,16 +6,20 @@ import inspect
 from abc import ABCMeta, abstractmethod
 from typing import Any, Dict
 
+import numpy as np
 import torch.nn as nn
 
-from auturi.executor.config import ActorConfig
 from auturi.executor.vector_utils import VectorMixin
+from auturi.tuner.config import ActorConfig
 
 
 class AuturiPolicy(metaclass=ABCMeta):
     @abstractmethod
-    def compute_actions(self, obs: Any, n_steps: int):
-        """Compute action with policy network."""
+    def compute_actions(self, obs: np.ndarray, n_steps: int = -1):
+        """Compute action with policy network.
+
+        obs dimension should be always [num_envs, *observation_space.shape]
+        """
         raise NotImplementedError
 
     @abstractmethod
@@ -30,7 +34,7 @@ class AuturiVectorPolicy(VectorMixin, AuturiPolicy, metaclass=ABCMeta):
 
         Args:
             policy_cls (classVar): Adapter class that inherits AuturiPolicy.
-            policy_model (torch.nn.Module): Model should be on shared memory.
+            policy_kwargs (Dict[str, Any]): Keyword arguments used for instantiation.
         """
         assert AuturiPolicy in inspect.getmro(policy_cls)
 

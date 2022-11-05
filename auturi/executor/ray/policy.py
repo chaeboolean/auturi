@@ -13,7 +13,7 @@ class RayVectorPolicy(AuturiVectorPolicy):
         self.pending_policies = dict()
 
     def _create_worker(self, idx: int):
-        @ray.remote(num_gpus=0.01)
+        @ray.remote(num_gpus=0.0001)
         class RayPolicyWrapper(self.policy_cls):
             """Wrappers run in separated Ray process."""
 
@@ -27,6 +27,7 @@ class RayVectorPolicy(AuturiVectorPolicy):
                 )
                 return super().compute_actions(env_obs, n_steps)
 
+        self.policy_kwargs["idx"] = idx
         return RayPolicyWrapper.remote(**self.policy_kwargs)
 
     def _load_policy_model(

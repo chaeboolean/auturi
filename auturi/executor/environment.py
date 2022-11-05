@@ -2,13 +2,14 @@
 Defines typings related to Environment: AuturiEnv, AuturiSerialEnv, AuturiVecEnv.
 
 """
+import math
 from abc import ABCMeta, abstractmethod
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import numpy as np
 
-from auturi.executor.config import ActorConfig
 from auturi.executor.vector_utils import VectorMixin, aggregate_partial
+from auturi.tuner.config import ActorConfig
 
 
 class AuturiEnv(metaclass=ABCMeta):
@@ -19,16 +20,22 @@ class AuturiEnv(metaclass=ABCMeta):
     """
 
     @abstractmethod
-    def step(self, action, action_artifacts):
-        """Take action artifacts also for buffer storage."""
+    def step(
+        self, action: np.ndarray, action_artifacts: List[np.ndarray]
+    ) -> np.ndarray:
+        """Main simulation function.
+
+        It also take action artifacts also for buffer storage.
+        Given action should have equal shape with self.action_space.
+        """
         raise NotImplementedError
 
     @abstractmethod
-    def terminate(self):
+    def terminate(self) -> None:
         raise NotImplementedError
 
     @abstractmethod
-    def reset(self):
+    def reset(self) -> np.ndarray:
         raise NotImplementedError
 
     @abstractmethod
@@ -36,11 +43,11 @@ class AuturiEnv(metaclass=ABCMeta):
         raise NotImplementedError
 
     @abstractmethod
-    def aggregate_rollouts(self, to=Optional[np.ndarray]) -> Dict[str, Any]:
+    def aggregate_rollouts(self, to=Optional[np.ndarray]) -> Dict[str, np.ndarray]:
         """Aggregates rollout results from remote environments."""
         raise NotImplementedError
 
-    def setup_with_dummy(self, dummy_env):
+    def setup_with_dummy(self, dummy_env) -> None:
         """Set basic attributes from dummy_env."""
         self.observation_space = dummy_env.observation_space
         self.action_space = dummy_env.action_space
@@ -60,13 +67,9 @@ class AuturiSerialEnv(AuturiEnv):
         dummy_env = env_fns[0]()
         assert isinstance(dummy_env, AuturiEnv)
         self.setup_with_dummy(dummy_env)
-        dummy_obs = dummy_env.reset()
-        self.agg_fn = (
-            np.stack
-            if dummy_obs.ndim == len(self.observation_space.shape)
-            else np.concatenate
-        )
 
+        dummy_obs = dummy_env.reset()
+        assert dummy_obs.shape == self.observation_space.shape
         dummy_env.terminate()
 
         self.envs = dict()  # maps env_id and AuturiEnv instance
@@ -83,34 +86,38 @@ class AuturiSerialEnv(AuturiEnv):
                 self.envs[env_id] = self.env_fns[env_id]()
 
     def reset(self) -> np.ndarray:
-        obs_list = [env.reset() for eid, env in self._working_envs()]
-        return self.agg_fn(obs_list)
+        obs_list = [env.reset() for _, env in self._working_envs()]
+        return np.stack(obs_list)
 
     def seed(self, seed) -> None:
         for eid, env in self._working_envs():
             env.seed(seed + eid)
 
     def terminate(self):
-        for eid, env in self.envs.items():  # terminate not only working envs.
+        for _, env in self.envs.items():  # terminate not only working envs.
             env.terminate()
 
-    def step(self, action_ref):
+    def step(self, actions: np.ndarray, action_artifacts: List[np.ndarray]):
+        """Broadcast step function to each working envs.
+
+        Args:
+            actions (np.ndarray): shape should be [self.num_envs, *self.action_space.shape]
+            action_artifacts (List[np.ndarray]): Each element' first dim equals to self.num_envs
+
+        Returns:
+            np.npdarray: shape should be [self.num_envs, *self.observation_space.shape]
+        """
         obs_list = []
-        actions, action_artifacts = action_ref
-        assert len(actions) == self.num_envs
         for eid, env in self._working_envs():
             artifacts_ = [elem[eid - self.start_idx] for elem in action_artifacts]
             obs = env.step(actions[eid - self.start_idx], artifacts_)
             obs_list += [obs]
 
-        return self.agg_fn(obs_list)
+        return np.stack(obs_list)
 
-    def aggregate_rollouts(self, to=None) -> Dict[str, Any]:
+    def aggregate_rollouts(self) -> Dict[str, Any]:
         partial_rollouts = [env.aggregate_rollouts() for _, env in self._working_envs()]
-        res = aggregate_partial(partial_rollouts, to_extend=True)
-        # print(f"SerialEnv ===> len rollouts= {len(res)}")
-        # for key, val in res.items():
-        #     print(f"SerialEnv {key}: {val.shape}")
+        res = aggregate_partial(partial_rollouts, to_stack=True, to_extend=True)
         return res
 
     def _working_envs(self) -> Tuple[int, AuturiEnv]:
@@ -123,7 +130,7 @@ class AuturiVectorEnv(VectorMixin, AuturiEnv, metaclass=ABCMeta):
     def __init__(self, env_fns: List[Callable]):
         self.env_fns = env_fns
         self.batch_size = -1  # should be initialized
-        self.num_env_serial = 0
+        self.num_env_serial = 0  # should be initialized
 
         # check dummy
         dummy_env = env_fns[0]()
@@ -138,7 +145,7 @@ class AuturiVectorEnv(VectorMixin, AuturiEnv, metaclass=ABCMeta):
         """Return the total number of environments that are currently running."""
         return self.num_env_serial * self.num_workers
 
-    def reconfigure(self, config: ActorConfig) -> None:
+    def reconfigure(self, config: ActorConfig, start_env_idx: int) -> None:
         """Reconfigure env_workers when given number of total envs and parallel degree."""
 
         assert config.num_envs <= len(self.env_fns)
@@ -146,15 +153,21 @@ class AuturiVectorEnv(VectorMixin, AuturiEnv, metaclass=ABCMeta):
         # set number of currently working workers
         self.num_workers = config.num_parallel
 
+        # Set batch size. used when poll()
+        self.batch_size = config.batch_size
+
         # Set serial_degree to each env_worker
         self.num_env_serial = config.num_envs // config.num_parallel
+        self.num_worker_to_poll = math.ceil(self.batch_size / self.num_env_serial)
 
-        # Set batch size (used when polling)
-        self.batch_size = config.batch_size
+        assert self.num_worker_to_poll > 0
 
         for idx, env_worker in self._working_workers():
             self._set_working_env(
-                idx, env_worker, self.num_env_serial * idx, self.num_env_serial
+                idx,
+                env_worker,
+                start_env_idx + self.num_env_serial * idx,
+                self.num_env_serial,
             )
 
     @abstractmethod

@@ -2,6 +2,13 @@
 Defines typings for Auturi Systems. 
 The hierarchy of all data structures is described below.
 
+AuturiEnv    --- AuturiSerialEnv --- AuturiParallelEnv  --- 
+                                                         |
+                                                         --- AuturiActor --- AuturiVectorActor 
+                                                         |
+AuturiPolicy ----------------------- AuturiVectorPolicy ---
+
+
 
 Example code is like below.
     
@@ -15,36 +22,39 @@ Example code is like below.
 
     env_fns = [lambda: MyOwnEnv() for _ in range(num_max_envs)]
 
-    auturi_env_fn, auturi_policy_fn = create_actor_args(
+    auturi_engine = create_executor(
         env_fns = env_fns, 
         policy_cls = MyOwnPolicy, 
         policy_kwargs = policy_kwargs, 
+        tuner = GridSearchTuner,
         backend="ray",
     )
+    
+    auturi_engine.run(num_collect=1e6)
+
     '''
 
 """
 
-from typing import Any, Callable, Dict, List, Tuple
+from typing import Any, Callable, Dict, List
 
-from auturi.executor.environment import AuturiEnv, AuturiVectorEnv
-from auturi.executor.policy import AuturiVectorPolicy
-from auturi.executor.ray import create_ray_actor_args
-from auturi.executor.ray.executor import RayExecutor
-
-# def create_actor_args(
-#     env_fns: List[Callable[[], AuturiEnv]],
-#     policy_cls: Any,
-#     policy_kwargs: Dict[str, Any],
-#     backend="ray",
-# ) -> Tuple[Callable[[], AuturiVectorEnv], Callable[[], AuturiVectorPolicy]]:
-
-#     create_fn = {
-#         "ray": create_ray_actor_args,
-#         "shm": create_shm_actor_args,
-#     }[backend]
-
-#     return create_fn(env_fns, policy_cls, policy_kwargs)
+from auturi.executor.environment import AuturiEnv
+from auturi.executor.ray import RayVectorActor
+from auturi.tuner import AuturiTuner
 
 
-# __all__ = ["create_actor_args", "RayExecutor"]
+def create_executor(
+    env_fns: List[Callable[[], AuturiEnv]],
+    policy_cls: Any,
+    policy_kwargs: Dict[str, Any],
+    tuner: AuturiTuner,
+    backend="ray",
+):
+    engine_cls = {
+        "ray": RayVectorActor,
+    }[backend]
+
+    return engine_cls(env_fns, policy_cls, policy_kwargs, tuner)
+
+
+__all__ = ["create_executor"]

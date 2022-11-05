@@ -12,15 +12,15 @@ class ActorConfig:
         num_policy (int): number of policy replica that an actor manages.
         num_parallel (int): number of parallel environment worker.
         batch_size (int): number of environments that a policy replica handles at a time.
-        policy_device (str): device placement of policy replica.
+        policy_device (str): device placement of policy network replica.
 
     """
 
     num_envs: int = 1
-    num_policy: int = 1  # number of servers
+    num_policy: int = 1
     num_parallel: int = 1
     batch_size: int = 1
-    policy_device: str = "cpu"  # device where server reside
+    policy_device: str = "cpu"
 
     def __post_init__(self):
         """Validate configurations."""
@@ -31,7 +31,7 @@ class ActorConfig:
         num_env_serial = self.num_envs // self.num_parallel
         assert num_env_serial > 0
         assert self.batch_size >= num_env_serial
-        assert self.batch_size % num_env_serial == 0 
+        assert self.batch_size % num_env_serial == 0
 
 
 @dataclass
@@ -51,7 +51,7 @@ class TunerConfig:
         assert self.num_actors > 0
         assert len(self.actor_config_map) == self.num_actors
 
-    def get(self, actor_id: int):
+    def __getitem__(self, actor_id: int):
         return self.actor_config_map[actor_id]
 
 
