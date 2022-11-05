@@ -47,7 +47,6 @@ class SHMParallelEnv(AuturiVectorEnv, SHMVectorMixin):
         self.cmd_enum = ENV_COMMAND
 
     def _create_worker(self, idx: int):
-        print("Create worker!!! , ", idx)
         self.events[idx] = mp.Event()
         self.events[idx].clear()
 

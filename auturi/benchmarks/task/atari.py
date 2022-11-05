@@ -1,11 +1,10 @@
 import numpy as np
 import torch
+from auturi.executor.environment import AuturiEnv
+from auturi.executor.policy import AuturiPolicy
 from stable_baselines3.common.env_util import make_atari_env
 from stable_baselines3.common.policies import ActorCriticCnnPolicy, ActorCriticPolicy
 from stable_baselines3.common.vec_env import VecFrameStack, VecTransposeImage
-
-from auturi.executor.environment import AuturiEnv
-from auturi.executor.policy import AuturiPolicy
 
 TASK_ID = "PongNoFrameskip-v4"
 

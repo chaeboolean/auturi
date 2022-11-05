@@ -2,7 +2,6 @@ import argparse
 import time
 
 import numpy as np
-
 from auturi.benchmarks.task.atari import AtariEnv, AtariPolicy
 from auturi.executor import RayExecutor, create_actor_args
 from auturi.executor.config import ActorConfig, TunerConfig
@@ -27,6 +26,7 @@ def main():
         batch_size=num_envs,
         policy_device="cuda:0",
     )
+
     tuner_config = TunerConfig(1, {0: actor_config})
 
     executor.reconfigure(tuner_config, model=None)

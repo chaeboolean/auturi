@@ -7,7 +7,7 @@ from auturi.executor.config import ActorConfig, AuturiMetric
 from auturi.executor.environment import AuturiEnv
 from auturi.executor.policy import AuturiPolicy
 
-
+import ray
 class AuturiActor:
     """AuturiActor is an abstraction of collection loop.
 
@@ -44,13 +44,11 @@ class AuturiActor:
         n_steps = 0
         start_time = time.perf_counter()
         while n_steps < num_collect:
-            print("before poll... ", round(time.perf_counter() - start_time, 2))
             obs_refs = self.envs.poll()
-
-            print("after poll... ", round(time.perf_counter() - start_time, 2))
+            #print("obs_res -> ", ray.get(list(obs_refs.values()))[0].shape)
             action_refs = self.policy.compute_actions(obs_refs, n_steps)
-            print("after send actions... ", round(time.perf_counter() - start_time, 2))
-
+            #print("action_refs -> ", ray.get(action_refs)[0].shape)
+            
             self.envs.send_actions(action_refs)
 
             n_steps += self.envs.batch_size  # len(obs_refs)

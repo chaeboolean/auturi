@@ -102,10 +102,12 @@ class OnPolicyAlgorithm(BaseAlgorithm):
 
         if _init_setup_model:
             self._setup_model()
-            
+        
+        self._auturi_iteration = -1
+        self._auturi_train_skip = False
         self._collect_rollouts_fn = self._collect_rollouts_default
-        self.training_time = 0
-        self.collect_time = 0
+        self.training_time = []
+        self.collect_time = []
 
 
     def _setup_model(self) -> None:
@@ -257,10 +259,15 @@ class OnPolicyAlgorithm(BaseAlgorithm):
         )
 
         callback.on_training_start(locals(), globals())
-
-        #while self.num_timesteps < total_timesteps:
-        while iteration < self._auturi_iteration:
-
+        
+        cond_ = lambda: iteration < self._auturi_iteration
+        if self._auturi_iteration < 0:
+            cond_ = lambda: self.num_timesteps < total_timesteps
+            
+        # while self.num_timesteps < total_timesteps:
+        # while iteration < self._auturi_iteration:
+        while cond_():
+    
             rollout_start = time.perf_counter()
             continue_training = self.collect_rollouts(self.env, callback, self.rollout_buffer, n_rollout_steps=self.n_steps)
             collect_time = time.perf_counter() - rollout_start
@@ -289,12 +296,9 @@ class OnPolicyAlgorithm(BaseAlgorithm):
                 self.train()
             train_time = time.perf_counter() - train_start
             
-            if iteration > 2: 
-                self.training_time += train_time
-                self.collect_time += collect_time
+            self.training_time += [train_time]
+            self.collect_time += [collect_time]
             
-            print(f"{iteration}: Collect time = {round(collect_time*1000, 2)} ms. Train time = {round(train_time*1000, 2)} ms.")
-
         callback.on_training_end()
 
         return self
