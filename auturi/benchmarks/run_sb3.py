@@ -5,11 +5,10 @@ import numpy as np
 from rl_zoo3.exp_manager import ExperimentManager
 
 from auturi.adapter.sb3 import wrap_sb3_OnPolicyAlgorithm
-from auturi.tuner import create_tuner_with_config
-from auturi.tuner.config import ActorConfig, TunerConfig
+from auturi.tuner.grid_search import GridSearchTuner
 
 
-def create_sb3_algorithm(args, vec_cls="dummy"):
+def create_sb3_algorithm(args, num_iteration, vec_cls="dummy"):
     exp_manager = ExperimentManager(
         args=args,
         algo="ppo",
@@ -25,7 +24,7 @@ def create_sb3_algorithm(args, vec_cls="dummy"):
     model, _ = exp_manager.setup_experiment()
     model.env_fns = [_wrap for _ in range(exp_manager.n_envs)]
 
-    model._auturi_iteration = args.num_iteration
+    model._auturi_iteration = num_iteration
     model._auturi_train_skip = args.skip_update
 
     return exp_manager, model
@@ -33,25 +32,25 @@ def create_sb3_algorithm(args, vec_cls="dummy"):
 
 def run(args):
     # create ExperimentManager with minimum argument.
+    num_iteration = -1 if args.running_mode == "auturi" else args.num_iteration
     vec_cls = "dummy" if args.running_mode == "auturi" else args.running_mode
-    exp_manager, model = create_sb3_algorithm(args, vec_cls)
+    exp_manager, model = create_sb3_algorithm(args, num_iteration, vec_cls)
 
     if args.running_mode == "auturi":
         n_envs = exp_manager.n_envs
-        actor_config = ActorConfig(num_envs=4, num_parallel=2, batch_size=4)
-        tuner_config = TunerConfig(
-            2,
-            {0: actor_config, 1: actor_config},
+        tuner = GridSearchTuner(
+            n_envs, n_envs, max_policy_num=8, num_iterate=args.num_iteration
         )
-        tuner = create_tuner_with_config(n_envs, tuner_config)
-
         wrap_sb3_OnPolicyAlgorithm(model, tuner=tuner)
+        try:
+            exp_manager.learn(model)
+        except StopIteration:
+            print("search finish....")
+            print(tuner.tuning_results)
 
-    exp_manager.learn(model)
-    collect_times = np.array(model.collect_time[2:]) * 1000
-
-    print(f"*** Result = {sum(model.collect_time[2:])}")
-    # print(f"*** Avg time = {collect_times.mean()}")
+    else:
+        exp_manager.learn(model)
+        print(model.collect_times)
 
 
 if __name__ == "__main__":
@@ -66,7 +65,9 @@ if __name__ == "__main__":
     parser.add_argument(
         "--skip-update", action="store_true", help="skip backprop stage."
     )
-    parser.add_argument("--num-iteration", type=int, default=10)
+    parser.add_argument(
+        "--num-iteration", type=int, default=3, help="number of trials for each config."
+    )
 
     args = parser.parse_args()
     run(args)

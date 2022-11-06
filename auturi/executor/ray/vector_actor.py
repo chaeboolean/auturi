@@ -11,8 +11,7 @@ from auturi.executor.ray.environment import RayParallelEnv
 from auturi.executor.ray.policy import RayVectorPolicy
 from auturi.executor.vector_actor import AuturiVectorActor
 from auturi.executor.vector_utils import aggregate_partial
-from auturi.tuner import AuturiTuner
-from auturi.tuner.config import AuturiMetric, ParallelizationConfig
+from auturi.tuner import ActorConfig, AuturiMetric, AuturiTuner
 
 
 class RayActor(AuturiActor):

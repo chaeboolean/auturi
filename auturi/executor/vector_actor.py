@@ -6,8 +6,7 @@ import torch.nn as nn
 from auturi.executor.actor import AuturiActor
 from auturi.executor.environment import AuturiEnv
 from auturi.executor.vector_utils import VectorMixin
-from auturi.tuner import AuturiTuner
-from auturi.tuner.config import AuturiMetric, ParallelizationConfig
+from auturi.tuner import ActorConfig, AuturiMetric, AuturiTuner, TunerConfig
 
 
 class AuturiVectorActor(VectorMixin, metaclass=ABCMeta):
@@ -57,6 +56,12 @@ class AuturiVectorActor(VectorMixin, metaclass=ABCMeta):
         """Run collection loop with `tuner.num_collect` iterations, and return experience trajectories and AuturiMetric."""
         next_config = self.tuner.next()
         self.reconfigure(next_config, model)
+
+        rollouts, metric = self._run(num_collect)
+
+        # Give result to tuner.
+        self.tuner.feedback(metric)
+        return rollouts, metric
 
         return self._run()
 

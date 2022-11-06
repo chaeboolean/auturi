@@ -61,6 +61,9 @@ class RayVectorPolicy(AuturiVectorPolicy):
             self.pending_policies[util.mock_ray.remote(None)] = wid
 
     def stop_loop(self):
+        for wid, policy_worker in self._working_workers():
+            self._load_policy_model(wid, policy_worker, None, "cpu")
+
         util.clear_pending_list(self.pending_policies)
 
     def terminate(self):

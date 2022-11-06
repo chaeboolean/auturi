@@ -1,11 +1,11 @@
 """Typing Definition for Auturi Tuner."""
-from dataclasses import dataclass
-from typing import Callable, List, Optional, Tuple
+from dataclasses import dataclass, field
+from typing import Callable, Dict, Optional
 
 from frozendict import frozendict
 
 
-@dataclass
+@dataclass(eq=True, frozen=True, order=True)
 class ActorConfig:
     """Configuration for a single actor component.
 
@@ -29,7 +29,6 @@ class ActorConfig:
     def __post_init__(self):
         """Validate configurations."""
         # assert self.policy_device in ["cpu", "cuda"]
-
         # SerialEnvs inside the same Actor should have same number of serial envs.
         assert self.num_envs % self.num_parallel == 0
 
@@ -115,6 +114,38 @@ class ParallelizationConfig:
             start_idx += getattr(actor_config, name)
 
         raise IndexError(f"Actor id {actor_id} does not exist.")
+
+    def validate(
+        self,
+        min_num_envs: int,
+        max_num_envs: int,
+        max_num_policy: int = 1000,
+        validator: Optional[Callable[[ActorConfig], bool]] = None,
+    ):
+        """Validate TunerConfig.
+
+        Args:
+            min_num_envs (int): minimum number of environments.
+            max_num_envs (int): maximum number of environments.
+            max_num_policy (int, optional): maximum number of policies.
+            validator (Callable[[ActorConfig], bool]): Additional user-defined function.
+        """
+        _num_envs = 0
+        _num_policy = 0
+
+        _num_envs += actor_config.num_envs
+        _num_policy += actor_config.num_policy
+
+        assert validator(actor_config)
+
+        assert _num_envs >= min_num_envs and _num_envs <= max_num_envs
+        assert _num_policy <= max_num_policy
+
+        if validator is None:
+            validator = lambda x: True
+
+        for _, actor_config in self.items():
+            assert validator(actor_config)
 
 
 @dataclass

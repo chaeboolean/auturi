@@ -5,9 +5,9 @@ from typing import Any, Callable, Dict, List, Tuple
 import ray
 import torch.nn as nn
 
-from auturi.executor.environment import AuturiEnv, AuturiVectorEnv
-from auturi.executor.policy import AuturiVectorPolicy
-from auturi.tuner.config import AuturiMetric, ParallelizationConfig
+from auturi.executor.environment import AuturiEnv
+from auturi.executor.policy import AuturiPolicy
+from auturi.tuner import ActorConfig, AuturiMetric
 
 
 class AuturiActor(metaclass=ABCMeta):

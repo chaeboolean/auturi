@@ -1,5 +1,5 @@
 from auturi.tuner.base_tuner import AuturiTuner
-from auturi.tuner.config import ParallelizationConfig
+from auturi.tuner.config import ParallelizationConfig, AuturiMetric, ActorConfig
 
 
 def create_tuner_with_config(num_envs: int, config: ParallelizationConfig):
@@ -13,10 +13,19 @@ def create_tuner_with_config(num_envs: int, config: ParallelizationConfig):
         def __init__(self):
             super().__init__(num_envs, num_envs, config.num_collect)
 
-        def next(self):
+        def _generate_next(self):
             return config
+
+        def _update_tuner(self, config, mean_metric):
+            pass
 
     return _MockTuner()
 
 
-__all__ = ["AuturiTuner", "create_tuner_with_config"]
+__all__ = [
+    "AuturiTuner",
+    "ParallelizationConfig",
+    "AuturiMetric",
+    "ActorConfig",
+    "create_tuner_with_config",
+]
