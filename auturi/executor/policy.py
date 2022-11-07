@@ -16,25 +16,25 @@ from auturi.tuner.config import ActorConfig
 class AuturiPolicy(metaclass=ABCMeta):
     @abstractmethod
     def compute_actions(self, obs: np.ndarray, n_steps: int = -1):
-        """Compute action with policy network.
+        """Compute action with the policy network.
 
-        obs dimension should be always [num_envs, *observation_space.shape]
+        obs dimension always should be [num_envs, *observation_space.shape]
         """
         raise NotImplementedError
 
     @abstractmethod
     def load_model(self, model: nn.Module, device: str):
-        """Load policy network on specified device."""
+        """Load policy network on the specified device."""
         raise NotImplementedError
 
 
 class AuturiVectorPolicy(VectorMixin, AuturiPolicy, metaclass=ABCMeta):
     def __init__(self, policy_cls, policy_kwargs: Dict[str, Any] = dict()):
-        """AuturiVectorPolicy is handler that manages multipler AuturiVectors.
+        """Abstraction for handling multiple AuturiPolicy.
 
         Args:
             policy_cls (classVar): Adapter class that inherits AuturiPolicy.
-            policy_kwargs (Dict[str, Any]): Keyword arguments used for instantiation.
+            policy_kwargs (Dict[str, Any]): Keyword arguments used for instantiating the policy.
         """
         assert AuturiPolicy in inspect.getmro(policy_cls)
 
@@ -61,7 +61,7 @@ class AuturiVectorPolicy(VectorMixin, AuturiPolicy, metaclass=ABCMeta):
     def _load_policy_model(
         self, idx: int, policy: AuturiPolicy, model: nn.Module, device: str
     ) -> None:
-        """Load policy model to device for working policy worker each."""
+        """Load the latest trained model parameter on the specified device for the policy."""
         raise NotImplementedError
 
     # TODO: No need to imple.

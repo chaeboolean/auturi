@@ -10,10 +10,9 @@ from auturi.tuner.config import ActorConfig, AuturiMetric
 
 
 class AuturiActor:
-    """AuturiActor is an abstraction of collection loop.
+    """AuturiActor is an abstraction designed to support the auto-parallelization of collection loops in RL.
 
-    AuturiActor is comprised of AuturiVectorEnv and AuturiPolicy.
-
+    AuturiActor is comprised of AuturiVectorEnv and AuturiPolicy, where each can have a varying level of parallelism.
     """
 
     def __init__(
@@ -28,7 +27,7 @@ class AuturiActor:
         assert isinstance(self.policy, AuturiPolicy)
 
     def reconfigure(self, config: ActorConfig, start_env_idx: int, model: nn.Module):
-        """Adjust envs and policy by given configs."""
+        """Reconfigure the number of envs and policies according to a given config found by AuturiTuner."""
 
         # Adjust Policy
         self.policy.reconfigure(config, model)
@@ -37,7 +36,7 @@ class AuturiActor:
         self.envs.reconfigure(config, start_env_idx)
 
     def run(self, num_collect: int) -> Tuple[Dict[str, Any], AuturiMetric]:
-        """Run collection loop with `num_collect` iterations, and return experience trajectories."""
+        """Run collection loop for num_collect iterations, and return experience trajectories."""
 
         self.policy.start_loop()
         self.envs.start_loop()

@@ -11,7 +11,7 @@ from auturi.executor.vector_utils import aggregate_partial
 
 
 @ray.remote
-class RayEnvWrapper(AuturiSerialEnv):
+class RaySerialEnv(AuturiSerialEnv):
     """SerialEnv used by RayParallelEnv.
     It inherits step function.
 
@@ -20,24 +20,30 @@ class RayEnvWrapper(AuturiSerialEnv):
     def step(self, action_ref, local_id=-1):
         # action_ref here is already unpacked.
         actions, action_artifacts = action_ref
-        my_action = actions[local_id : local_id + self.num_envs]
+        action_for_this_env = actions[local_id : local_id + self.num_envs]
         my_artifacts = [
             elem[local_id : local_id + self.num_envs] for elem in action_artifacts
         ]
 
-        return super().step(my_action, my_artifacts)
+        return super().step(action_for_this_env, my_artifacts)
 
 
 class RayParallelEnv(AuturiVectorEnv):
-    """RayParallelVectorEnv that uses Ray as backend."""
+    """Implementation of the AuturiVectorEnv for using Ray as a backend.."""
 
     def __init__(self, env_fns: List[Callable]):
         super().__init__(env_fns)
+
+        # pending_steps: Dict[ray.future, worker_id]
+        # Stores the remote env.step() calls, and maps the future with worker_id
         self.pending_steps = dict()
+
+        # last_output: Dict[worker_id, ray.future]
+        # Stores the output of lastly called poll(), for following send_action() call.
         self.last_output = dict()
 
     def _create_worker(self, idx):
-        return RayEnvWrapper.remote(idx, self.env_fns)
+        return RaySerialEnv.remote(idx, self.env_fns)
 
     def _set_working_env(self, wid, remote_env, start_idx, num_envs):
         ref = remote_env.set_working_env.remote(start_idx, num_envs)

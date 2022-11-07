@@ -1,5 +1,5 @@
 """
-Defines typings related to Environment: AuturiEnv, AuturiSerialEnv, AuturiVecEnv.
+Typings related to Environment: AuturiEnv, AuturiSerialEnv, AuturiVecEnv.
 
 """
 import math
@@ -13,20 +13,21 @@ from auturi.tuner.config import ActorConfig
 
 
 class AuturiEnv(metaclass=ABCMeta):
-    """Base API for environment used in Auturi System.
+    """Base class that defines APIs for environment used in Auturi System.
 
-    Users who would like to plug Auturi on other DRL frameworks
-    should implement AuturiEnv as adapter.
+
+    Auturi is designed with usability and portability in mind.
+    By implementing the AuturiEnv as an interface, users can combine other DRL frameworks (e.g. Ray) with Auturi.
     """
 
     @abstractmethod
     def step(
         self, action: np.ndarray, action_artifacts: List[np.ndarray]
     ) -> np.ndarray:
-        """Main simulation function.
+        """Same functionality with gym.Env.step().
 
         It also take action artifacts also for buffer storage.
-        Given action should have equal shape with self.action_space.
+        The shape of action should be equal to that of self.action_space
         """
         raise NotImplementedError
 
@@ -47,7 +48,7 @@ class AuturiEnv(metaclass=ABCMeta):
         """Aggregates rollout results from remote environments."""
         raise NotImplementedError
 
-    def setup_with_dummy(self, dummy_env) -> None:
+    def setup_dummy_env(self, dummy_env) -> None:
         """Set basic attributes from dummy_env."""
         self.observation_space = dummy_env.observation_space
         self.action_space = dummy_env.action_space
@@ -55,9 +56,9 @@ class AuturiEnv(metaclass=ABCMeta):
 
 
 class AuturiSerialEnv(AuturiEnv):
-    """Handle serial execution of multiple environments.
+    """Abstraction for handling sequential execution of multiple environments.
 
-    Implementation is similar to DummyVecEnv in Gym Library.
+    Reference implementation: DummyVecEnv in OpenAI Baselines (https://github.com/DLR-RM/stable-baselines3).
     """
 
     def __init__(self, idx=0, env_fns: List[Callable] = []):
@@ -66,7 +67,7 @@ class AuturiSerialEnv(AuturiEnv):
 
         dummy_env = env_fns[0]()
         assert isinstance(dummy_env, AuturiEnv)
-        self.setup_with_dummy(dummy_env)
+        self.setup_dummy_env(dummy_env)
 
         dummy_obs = dummy_env.reset()
         assert dummy_obs.shape == self.observation_space.shape
@@ -94,15 +95,15 @@ class AuturiSerialEnv(AuturiEnv):
             env.seed(seed + eid)
 
     def terminate(self):
-        for _, env in self.envs.items():  # terminate not only working envs.
+        for _, env in self.envs.items():
             env.terminate()
 
     def step(self, actions: np.ndarray, action_artifacts: List[np.ndarray]):
-        """Broadcast step function to each working envs.
+        """Broadcast actions to each env.
 
         Args:
             actions (np.ndarray): shape should be [self.num_envs, *self.action_space.shape]
-            action_artifacts (List[np.ndarray]): Each element' first dim equals to self.num_envs
+            action_artifacts (List[np.ndarray]): Each element' first dim should be equal to self.num_envs
 
         Returns:
             np.npdarray: shape should be [self.num_envs, *self.observation_space.shape]
@@ -116,8 +117,10 @@ class AuturiSerialEnv(AuturiEnv):
         return np.stack(obs_list)
 
     def aggregate_rollouts(self) -> Dict[str, Any]:
-        partial_rollouts = [env.aggregate_rollouts() for _, env in self._working_envs()]
-        res = aggregate_partial(partial_rollouts, to_stack=True, to_extend=True)
+        rollouts_from_each_env = [
+            env.aggregate_rollouts() for _, env in self._working_envs()
+        ]
+        res = aggregate_partial(rollouts_from_each_env, to_stack=True, to_extend=True)
         return res
 
     def _working_envs(self) -> Tuple[int, AuturiEnv]:
@@ -129,13 +132,13 @@ class AuturiSerialEnv(AuturiEnv):
 class AuturiVectorEnv(VectorMixin, AuturiEnv, metaclass=ABCMeta):
     def __init__(self, env_fns: List[Callable]):
         self.env_fns = env_fns
-        self.batch_size = -1  # should be initialized
-        self.num_env_serial = 0  # should be initialized
+        self.batch_size = -1  # should be initialized below
+        self.num_env_serial = 0  # should be initialized be
 
-        # check dummy
+        # Init with dummy env
         dummy_env = env_fns[0]()
         assert isinstance(dummy_env, AuturiEnv)
-        self.setup_with_dummy(dummy_env)
+        self.setup_dummy_env(dummy_env)
         dummy_env.terminate()
 
         self.set_vector_attrs()
@@ -146,17 +149,18 @@ class AuturiVectorEnv(VectorMixin, AuturiEnv, metaclass=ABCMeta):
         return self.num_env_serial * self.num_workers
 
     def reconfigure(self, config: ActorConfig, start_env_idx: int) -> None:
-        """Reconfigure env_workers when given number of total envs and parallel degree."""
+        """Reconfigure AuturiSerialEnv with the environment-level parallelism specified in the config."""
 
         assert config.num_envs <= len(self.env_fns)
 
         # set number of currently working workers
         self.num_workers = config.num_parallel
 
-        # Set batch size. used when poll()
+        # number of observations that a policy consumes for computing an action
         self.batch_size = config.batch_size
 
-        # Set serial_degree to each env_worker
+        # Set the number of environments that are executed sequentially
+        # = total number of environments // the degree of environment-level parallelism
         self.num_env_serial = config.num_envs // config.num_parallel
         self.num_worker_to_poll = math.ceil(self.batch_size / self.num_env_serial)
 
@@ -179,10 +183,11 @@ class AuturiVectorEnv(VectorMixin, AuturiEnv, metaclass=ABCMeta):
 
     @abstractmethod
     def poll(self) -> Any:
-        """Wait until at least 'self.batch_size' environments finish step.
+        """Wait until at least 'self.batch_size' environments finish their step.
 
         Returns:
-            Any: 'self.batch_size' fastest environment ids or their references.
+            Any: IDs or references of 'self.batch_size' number of environments that finished their steps the fastest.
+
         """
         raise NotImplementedError
 

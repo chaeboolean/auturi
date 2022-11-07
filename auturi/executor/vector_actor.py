@@ -7,7 +7,7 @@ from auturi.executor.actor import AuturiActor
 from auturi.executor.environment import AuturiEnv
 from auturi.executor.vector_utils import VectorMixin
 from auturi.tuner import AuturiTuner
-from auturi.tuner.config import ActorConfig, AuturiMetric, TunerConfig
+from auturi.tuner.config import ActorConfig, AuturiMetric, ParallelizationConfig
 
 
 class AuturiVectorActor(VectorMixin, metaclass=ABCMeta):
@@ -47,11 +47,11 @@ class AuturiVectorActor(VectorMixin, metaclass=ABCMeta):
         """Create function that create VectorPolicy with specific backend."""
         pass
 
-    def reconfigure(self, config: TunerConfig, model: nn.Module):
+    def reconfigure(self, config: ParallelizationConfig, model: nn.Module):
         """Adjust executor's component according to tuner-given config.
 
         Args:
-            next_config (TunerConfig): Configurations for tuning.
+            next_config (ParallelizationConfig): Configurations for tuning.
         """
         # set number of currently working actors
         self.num_workers = config.num_actors
