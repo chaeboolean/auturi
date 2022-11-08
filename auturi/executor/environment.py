@@ -9,7 +9,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 import numpy as np
 
 from auturi.executor.vector_utils import VectorMixin, aggregate_partial
-from auturi.tuner.config import ActorConfig
+from auturi.tuner.config import ParallelizationConfig
 
 
 class AuturiEnv(metaclass=ABCMeta):
@@ -61,8 +61,10 @@ class AuturiSerialEnv(AuturiEnv):
     Reference implementation: DummyVecEnv in OpenAI Baselines (https://github.com/DLR-RM/stable-baselines3).
     """
 
-    def __init__(self, idx=0, env_fns: List[Callable] = []):
-        self.idx = idx
+    def __init__(self, actor_id: int, serialenv_id: int, env_fns: List[Callable] = []):
+        self.actor_id = actor_id
+        self.serialenv_id = serialenv_id
+
         self.env_fns = env_fns
 
         dummy_env = env_fns[0]()
@@ -78,6 +80,7 @@ class AuturiSerialEnv(AuturiEnv):
 
     def set_working_env(self, start_idx: int, num_envs: int):
         """Initialize environments with env_ids."""
+        print(f"Set working env: ", start_idx, num_envs)
         self.start_idx = start_idx
         self.end_idx = start_idx + num_envs
         self.num_envs = num_envs
@@ -130,7 +133,9 @@ class AuturiSerialEnv(AuturiEnv):
 
 
 class AuturiVectorEnv(VectorMixin, AuturiEnv, metaclass=ABCMeta):
-    def __init__(self, env_fns: List[Callable]):
+    def __init__(self, actor_id: int, env_fns: List[Callable]):
+
+        self.actor_id = actor_id
         self.env_fns = env_fns
         self.batch_size = -1  # should be initialized below
         self.num_env_serial = 0  # should be initialized be
@@ -141,45 +146,33 @@ class AuturiVectorEnv(VectorMixin, AuturiEnv, metaclass=ABCMeta):
         self.setup_dummy_env(dummy_env)
         dummy_env.terminate()
 
-        self.set_vector_attrs()
+        super().__init__()
 
     @property
     def num_envs(self) -> int:
         """Return the total number of environments that are currently running."""
         return self.num_env_serial * self.num_workers
 
-    def reconfigure(self, config: ActorConfig, start_env_idx: int) -> None:
+    def reconfigure(self, config: ParallelizationConfig) -> None:
         """Reconfigure AuturiSerialEnv with the environment-level parallelism specified in the config."""
 
-        assert config.num_envs <= len(self.env_fns)
-
-        # set number of currently working workers
-        self.num_workers = config.num_parallel
+        actor_config = config[self.actor_id]
+        assert actor_config.num_envs <= len(self.env_fns)
 
         # number of observations that a policy consumes for computing an action
-        self.batch_size = config.batch_size
+        self.batch_size = actor_config.batch_size
 
         # Set the number of environments that are executed sequentially
         # = total number of environments // the degree of environment-level parallelism
-        self.num_env_serial = config.num_envs // config.num_parallel
+        self.num_env_serial = actor_config.num_envs // actor_config.num_parallel
         self.num_worker_to_poll = math.ceil(self.batch_size / self.num_env_serial)
 
         assert self.num_worker_to_poll > 0
 
-        for idx, env_worker in self._working_workers():
-            self._set_working_env(
-                idx,
-                env_worker,
-                start_env_idx + self.num_env_serial * idx,
-                self.num_env_serial,
-            )
-
-    @abstractmethod
-    def _set_working_env(
-        self, env_id: int, env_worker: AuturiEnv, start_idx: int, num_envs: int
-    ) -> None:
-        """Set SerialEnv worker."""
-        raise NotImplementedError
+        # set number of currently working workers
+        self.reconfigure_workers(
+            new_num_workers=actor_config.num_parallel, config=config
+        )
 
     @abstractmethod
     def poll(self) -> Any:
@@ -194,4 +187,14 @@ class AuturiVectorEnv(VectorMixin, AuturiEnv, metaclass=ABCMeta):
     @abstractmethod
     def send_actions(self, action_ref: Any) -> None:
         """Register action reference to remote env."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def start_loop(self):
+        """Setup before running collection loop."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def stop_loop(self):
+        """Stop loop, but not terminate entirely."""
         raise NotImplementedError

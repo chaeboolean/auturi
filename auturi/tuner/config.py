@@ -1,6 +1,8 @@
 """Typing Definition for Auturi Tuner."""
 from dataclasses import dataclass
-from typing import Dict
+from typing import Callable, List, Optional, Tuple
+
+from frozendict import frozendict
 
 
 @dataclass
@@ -8,6 +10,7 @@ class ActorConfig:
     """Configuration for a single actor component.
 
     Args:
+        num_collect (int): number of trajectories that an actor should collect.
         num_envs (int): number of environments that an actor manages.
         num_policy (int): number of policy replica that an actor manages.
         num_parallel (int): number of SerialEnv that runs in parallel.
@@ -21,6 +24,7 @@ class ActorConfig:
     num_parallel: int = 1
     batch_size: int = 1
     policy_device: str = "cpu"
+    num_collect: int = 1
 
     def __post_init__(self):
         """Validate configurations."""
@@ -43,26 +47,78 @@ class ActorConfig:
         assert self.batch_size >= num_env_serial
         assert self.batch_size % num_env_serial == 0
 
+        # At least one SerialEnv should be executed.
 
-@dataclass
+        print(self)
+        assert self.num_collect >= num_env_serial
+
+
+@dataclass(eq=True, frozen=True)
 class ParallelizationConfig:
     """Parallelization configuration for AuturiExecutor, found by AuturiTuner.
 
     Args:
-        num_actors (int): number of actors that the executor manages.
-        actor_config_map (Dict[int, ActorConfig]): maps actor id and actor instance.
+        num_collect (int): number of trajectories to collect.
+        actor_map (frozendict[int, ActorConfig]): maps actor id and actor instance.
 
     """
 
-    num_actors: int
-    actor_config_map: Dict[int, ActorConfig]
+    num_collect: int
+    actor_map: frozendict
 
     def __post_init__(self):
-        assert self.num_actors > 0
-        assert len(self.actor_config_map) == self.num_actors
+        """Validate configurations."""
+        ctr = 0
+        for _, actor_config in self.actor_map.items():
+            ctr += actor_config.num_collect
+        assert ctr == self.num_collect
 
-    def __getitem__(self, actor_id: int):
-        return self.actor_config_map[actor_id]
+    @classmethod
+    def create(cls, num_collect: int, actor_configs: List[ActorConfig]):
+        return cls(
+            num_collect,
+            frozendict({idx: config for idx, config in enumerate(actor_configs)}),
+        )
+
+    def __getitem__(self, actor_id: int) -> ActorConfig:
+        return self.actor_map[actor_id]
+
+    @property
+    def num_actors(self):
+        return len(self.actor_map)
+
+    @property
+    def num_envs(self):
+        num_envs = 0
+        for _, actor_config in self.actor_map.items():
+            num_envs += actor_config.num_envs
+        return num_envs
+
+    @property
+    def num_parallel_envs(self):
+        num_env_workers = 0
+        for _, actor_config in self.actor_map.items():
+            num_env_workers += actor_config.num_parallel
+        return num_env_workers
+
+    @property
+    def num_policy(self):
+        num_policy = 0
+        for _, actor_config in self.actor_map.items():
+            num_policy += actor_config.num_policy
+        return num_policy
+
+    def compute_index_for_actor(self, name: str, actor_id: int) -> int:
+        """Return the global index of Env, SerialEnv, or Policy with given actor_id."""
+        assert name in ["num_envs", "num_parallel", "num_policy"]
+        start_idx = 0
+        for idx, actor_config in self.actor_map.items():
+            if idx == actor_id:
+                return start_idx
+
+            start_idx += getattr(actor_config, name)
+
+        raise IndexError(f"Actor id {actor_id} does not exist.")
 
 
 @dataclass

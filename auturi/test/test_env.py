@@ -3,7 +3,7 @@ import numpy as np
 import auturi.test.utils as utils
 from auturi.executor.environment import AuturiSerialEnv, AuturiVectorEnv
 from auturi.executor.ray import RayParallelEnv
-from auturi.tuner.config import ActorConfig
+from auturi.tuner.config import ActorConfig, ParallelizationConfig
 
 VECTOR_BACKEND = "ray"
 
@@ -11,11 +11,11 @@ VECTOR_BACKEND = "ray"
 def create_env(mode, num_envs, num_parallel=-1):
     env_fns = utils.create_env_fns(num_envs)
     if mode == "serial":
-        test_envs = AuturiSerialEnv(0, env_fns)
+        test_envs = AuturiSerialEnv(0, 0, env_fns)
         test_envs.set_working_env(start_idx=0, num_envs=num_envs)
 
     elif mode == "ray":
-        test_envs = RayParallelEnv(env_fns)
+        test_envs = RayParallelEnv(0, env_fns)
         mock_reconfigure(test_envs, num_envs, num_parallel)
 
     return test_envs
@@ -23,9 +23,12 @@ def create_env(mode, num_envs, num_parallel=-1):
 
 def mock_reconfigure(test_env, num_envs, num_parallel):
     config = ActorConfig(
-        num_envs=num_envs, num_parallel=num_parallel, batch_size=num_envs
+        num_envs=num_envs,
+        num_parallel=num_parallel,
+        batch_size=num_envs,
+        num_collect=100,
     )
-    test_env.reconfigure(config)
+    test_env.reconfigure(ParallelizationConfig.create(100, [config]))
 
 
 def step_env(test_env, num_envs, num_steps, timeout):

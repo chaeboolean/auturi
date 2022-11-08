@@ -16,10 +16,14 @@ from auturi.tuner.config import ActorConfig, AuturiMetric
 
 
 @ray.remote(num_gpus=0.01)
-class RayActorWrapper(AuturiActor):
+class RayActor(AuturiActor):
     """Wrappers run in separated Ray process."""
 
-    pass
+    def _create_vector_env(self, env_fns: List[Callable[[], AuturiEnv]]):
+        return RayParallelEnv(self.actor_id, env_fns)
+
+    def _create_vector_policy(self, policy_cls: Any, policy_kwargs: Dict[str, Any]):
+        return RayVectorPolicy(self.actor_id, policy_cls, policy_kwargs)
 
 
 class RayVectorActor(AuturiVectorActor):
@@ -33,58 +37,28 @@ class RayVectorActor(AuturiVectorActor):
         self.pending_actors = dict()
         super().__init__(env_fns, policy_cls, policy_kwargs, tuner)
 
-    def _create_env(self, _env_fns):
-        def _wrap():
-            return RayParallelEnv(_env_fns)
+    def _create_worker(self, worker_id: int) -> AuturiActor:
+        return RayActor.remote(
+            worker_id, self.env_fns, self.policy_cls, self.policy_kwargs
+        )
 
-        return _wrap
+    def _reconfigure_worker(self, worker_id: int, worker: RayActor, config):
+        pass
 
-    def _create_policy(self, _policy_cls, _policy_kwargs):
-        def _wrap():
-            return RayVectorPolicy(_policy_cls, _policy_kwargs)
+    def _terminate_worker(self, worker_id: int, worker: RayActor):
+        del worker
 
-        return _wrap
-
-    def _create_worker(self, idx: int) -> AuturiActor:
-        if idx == 0:
-            return AuturiActor(self.vector_env_fn, self.vector_policy_fn)
-        else:
-            return RayActorWrapper.remote(self.vector_env_fn, self.vector_policy_fn)
-
-    def _reconfigure_actor(
-        self,
-        idx: int,
-        actor: AuturiActor,
-        config: ActorConfig,
-        start_env_idx: int,
-        model: nn.Module,
-    ):
-        """Reconfigure each actor."""
-        if idx == 0:
-            actor.reconfigure(config, start_env_idx, model)
-        else:
-            ref = actor.reconfigure.remote(config, start_env_idx, model)
-            self.pending_actors[ref] = idx
-
-    def _run(self, num_collect: int) -> Tuple[Dict[str, Any], AuturiMetric]:
+    def _run(self) -> Tuple[Dict[str, Any], AuturiMetric]:
         util.clear_pending_list(self.pending_actors)
 
-        num_collect_per_actor = math.ceil(num_collect / self.num_workers)
-        for actor_id, actor in self._working_workers():
-            if actor_id == 0:
-                continue
-            else:
-                ref = actor.run.remote(num_collect_per_actor)
-                self.pending_actors[ref] = actor_id
-
-        local_rollouts, local_metric = self.local_worker.run(num_collect_per_actor)
+        for actor_id, actor in self.workers():
+            ref = actor.run.remote()
+            self.pending_actors[ref] = actor_id
 
         # Aggregate
-        remote_rollouts = ray.get(list(self.pending_actors.keys()))
-        partial_rollouts = [local_rollouts] + [
-            remote_[0] for remote_ in remote_rollouts
-        ]
+        rollouts_for_each_actor = ray.get(list(self.pending_actors.keys()))
+        partial_rollouts = [remote_[0] for remote_ in rollouts_for_each_actor]
         agg_rollouts = aggregate_partial(partial_rollouts)
 
         # TODO: metric should not be local_metric.
-        return agg_rollouts, local_metric
+        return agg_rollouts, rollouts_for_each_actor[0][1]

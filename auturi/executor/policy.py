@@ -10,7 +10,7 @@ import numpy as np
 import torch.nn as nn
 
 from auturi.executor.vector_utils import VectorMixin
-from auturi.tuner.config import ActorConfig
+from auturi.tuner.config import ParallelizationConfig
 
 
 class AuturiPolicy(metaclass=ABCMeta):
@@ -27,9 +27,15 @@ class AuturiPolicy(metaclass=ABCMeta):
         """Load policy network on the specified device."""
         raise NotImplementedError
 
+    @abstractmethod
+    def terminate(self) -> None:
+        raise NotImplementedError
+
 
 class AuturiVectorPolicy(VectorMixin, AuturiPolicy, metaclass=ABCMeta):
-    def __init__(self, policy_cls, policy_kwargs: Dict[str, Any] = dict()):
+    def __init__(
+        self, actor_id: int, policy_cls, policy_kwargs: Dict[str, Any] = dict()
+    ):
         """Abstraction for handling multiple AuturiPolicy.
 
         Args:
@@ -38,24 +44,28 @@ class AuturiVectorPolicy(VectorMixin, AuturiPolicy, metaclass=ABCMeta):
         """
         assert AuturiPolicy in inspect.getmro(policy_cls)
 
+        self.actor_id = actor_id
         self.policy_cls = policy_cls
         self.policy_kwargs = policy_kwargs
 
-        self.set_vector_attrs()
+        super().__init__()
 
     @property
     def num_policies(self):
-        return self.num_worker
+        return self.num_workers
 
-    def reconfigure(self, config: ActorConfig, model: nn.Module):
+    def reconfigure(self, config: ParallelizationConfig, model: nn.Module):
         """Add remote policy if needed."""
 
         # set number of currently working workers
-        self.num_workers = config.num_policy
+        actor_config = config[self.actor_id]
+        self.reconfigure_workers(new_num_workers=actor_config.num_policy, config=config)
 
         # call load_model for each policy.
-        for wid, policy_worker in self._working_workers():
-            self._load_policy_model(wid, policy_worker, model, config.policy_device)
+        for wid, policy_worker in self.workers():
+            self._load_policy_model(
+                wid, policy_worker, model, actor_config.policy_device
+            )
 
     @abstractmethod
     def _load_policy_model(
@@ -67,3 +77,13 @@ class AuturiVectorPolicy(VectorMixin, AuturiPolicy, metaclass=ABCMeta):
     # TODO: No need to imple.
     def load_model(self, model: nn.Module, device: str):
         pass
+
+    @abstractmethod
+    def start_loop(self):
+        """Setup before running collection loop."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def stop_loop(self):
+        """Stop loop, but not terminate entirely."""
+        raise NotImplementedError

@@ -6,6 +6,8 @@ from typing import Any, Dict, List, Tuple, TypeVar
 
 import numpy as np
 
+from auturi.tuner.config import ParallelizationConfig
+
 T = TypeVar("T")
 
 
@@ -17,48 +19,61 @@ class VectorMixin(metaclass=ABCMeta):
 
     """
 
-    def set_vector_attrs(self):
-        self.local_worker = self._create_worker(0)
-        self.remote_workers = OrderedDict()
-        self.num_workers = 1
+    def __init__(self):
+        self._workers = OrderedDict()
+
+    @property
+    def num_workers(self):
+        return len(self._workers)
+
+    def reconfigure_workers(self, new_num_workers: int, config: ParallelizationConfig):
+
+        old_workers = self._workers
+        new_workers = OrderedDict()
+
+        for worker_id in range(new_num_workers):
+            if worker_id in old_workers:
+                worker = old_workers.pop(worker_id)
+            else:
+                worker = self._create_worker(worker_id)
+
+            self._reconfigure_worker(worker_id, worker, config)
+            new_workers[worker_id] = worker
+
+        for worker_id in old_workers.keys():
+            worker = old_workers.pop(worker_id)
+            self._terminate_worker(worker_id, worker)
+
+        assert len(old_workers) == 0
+        assert len(new_workers) == new_num_workers
+
+        self._workers = new_workers
 
     @abstractmethod
-    def _create_worker(self, idx: int) -> T:
-        """Create worker. If idx is 0, create local worker."""
+    def _create_worker(self, worker_id: int) -> T:
+        """Create worker."""
         raise NotImplementedError
 
-    def _get_worker(self, idx: int) -> T:
-        """Get worker. If idx is 0, get local worker."""
-        if idx == 0:
-            return self.local_worker
+    @abstractmethod
+    def _reconfigure_worker(
+        self, worker_id: int, worker: T, config: ParallelizationConfig
+    ):
+        """Create worker."""
+        raise NotImplementedError
 
-        elif idx not in self.remote_workers:
-            self.remote_workers[idx] = self._create_worker(idx)
+    @abstractmethod
+    def _terminate_worker(self, worker_id: int, worker: T) -> None:
+        """Create worker."""
+        raise NotImplementedError
 
-        return self.remote_workers[idx]
+    def get_worker(self, worker_id: int) -> T:
+        """Get worker by id."""
+        return self._workers[worker_id]
 
-    def _working_workers(self) -> Tuple[int, T]:
-        """Iterates all current working workers."""
-        for worker_id in range(0, self.num_workers):
-            yield worker_id, self._get_worker(worker_id)
-
-    def _existing_workers(self) -> Tuple[int, T]:
-        """Iterates all current alive workers."""
-        yield 0, self._get_worker(0)
-        for worker_id, worker in self.remote_workers.items():
+    def workers(self) -> Tuple[int, T]:
+        """Iterates all workers."""
+        for worker_id, worker in self._workers.items():
             yield worker_id, worker
-
-    def start_loop(self):
-        """Setup before running collection loop."""
-        pass
-
-    def stop_loop(self):
-        """Stop loop, but not terminate entirely."""
-        pass
-
-    def terminate(self):
-        """Terminate."""
-        pass
 
 
 def aggregate_partial(partial: List[Dict[str, Any]], to_stack=False, to_extend=False):

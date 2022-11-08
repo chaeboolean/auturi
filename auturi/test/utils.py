@@ -125,6 +125,9 @@ class DumbPolicy(AuturiPolicy):
         self.value += 1
         return np.copy(self.value), [np.copy(self.value)]
 
+    def terminate(self):
+        pass
+
 
 def create_env_fns(num_envs):
     def create_fn(idx):

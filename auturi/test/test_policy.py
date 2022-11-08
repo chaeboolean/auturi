@@ -5,7 +5,7 @@ import ray
 
 import auturi.test.utils as utils
 from auturi.executor.ray import RayVectorPolicy
-from auturi.tuner.config import ActorConfig
+from auturi.tuner.config import ActorConfig, ParallelizationConfig
 
 VECTOR_BACKEND = "ray"
 
@@ -17,16 +17,21 @@ def get_cuda_memory(device_index):
 
 
 def mock_reconfigure(test_policy, num_policy, device, model):
-    config = ActorConfig(
-        num_envs=100, num_parallel=100, num_policy=num_policy, policy_device=device
+    actor_config = ActorConfig(
+        num_envs=100,
+        num_parallel=100,
+        num_policy=num_policy,
+        policy_device=device,
+        num_collect=100,
     )
+    config = ParallelizationConfig.create(100, [actor_config])
     test_policy.reconfigure(config, model)
 
 
 def create_policy(mode, num_policy, device):
     model, policy_cls, policy_kwargs = utils.create_policy_args()
     if mode == "ray":
-        test_policy = RayVectorPolicy(policy_cls, policy_kwargs)
+        test_policy = RayVectorPolicy(0, policy_cls, policy_kwargs)
 
     mock_reconfigure(test_policy, num_policy, device, model)
     return test_policy, model

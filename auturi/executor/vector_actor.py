@@ -7,7 +7,7 @@ from auturi.executor.actor import AuturiActor
 from auturi.executor.environment import AuturiEnv
 from auturi.executor.vector_utils import VectorMixin
 from auturi.tuner import AuturiTuner
-from auturi.tuner.config import ActorConfig, AuturiMetric, ParallelizationConfig
+from auturi.tuner.config import AuturiMetric, ParallelizationConfig
 
 
 class AuturiVectorActor(VectorMixin, metaclass=ABCMeta):
@@ -32,62 +32,38 @@ class AuturiVectorActor(VectorMixin, metaclass=ABCMeta):
             tuner (AuturiTuner): AuturiTuner.
         """
 
-        self.vector_env_fn = self._create_env(env_fns)
-        self.vector_policy_fn = self._create_policy(policy_cls, policy_kwargs)
+        self.env_fns = env_fns
+        self.policy_cls = policy_cls
+        self.policy_kwargs = policy_kwargs
         self.tuner = tuner
-        self.set_vector_attrs()
+
+    @property
+    def num_actors(self):
+        return self.num_workers
 
     @abstractmethod
-    def _create_env(self, env_fns: List[Callable[[], AuturiEnv]]):
-        """Create function that create VectorEnv with specific backend."""
-        pass
-
-    @abstractmethod
-    def _create_policy(self, policy_cls: Any, policy_kwargs: Dict[str, Any]):
-        """Create function that create VectorPolicy with specific backend."""
-        pass
-
     def reconfigure(self, config: ParallelizationConfig, model: nn.Module):
         """Adjust executor's component according to tuner-given config.
 
         Args:
-            next_config (ParallelizationConfig): Configurations for tuning.
+            config (ParallelizationConfig): Configurations for tuning.
+            model (nn.Module): Policy network for compute next actions.
+
         """
-        # set number of currently working actors
-        self.num_workers = config.num_actors
+        self.reconfigure_workers(config, model)
 
-        # Set configs for each actor.
-        start_env_idx = 0
-        for actor_id, actor in self._working_workers():
-            self._reconfigure_actor(
-                actor_id, actor, config[actor_id], start_env_idx, model
-            )
-            start_env_idx += config[actor_id].num_envs
-
-    def run(
-        self, model: nn.Module, num_collect: int
-    ) -> Tuple[Dict[str, Any], AuturiMetric]:
-        """Run collection loop with `num_collect` iterations, and return experience trajectories"""
+    def run(self, model: nn.Module) -> Tuple[Dict[str, Any], AuturiMetric]:
+        """Run collection loop with `num_collect` iterations, and return experience trajectories and AuturiMetric."""
         next_config = self.tuner.next()
         self.reconfigure(next_config, model)
-        return self._run(num_collect)
 
-    @abstractmethod
-    def _reconfigure_actor(
-        self,
-        idx: int,
-        actor: AuturiActor,
-        config: ActorConfig,
-        start_env_idx: int,
-        model: nn.Module,
-    ):
-        """Reconfigure each actor."""
-        raise NotImplementedError
+        return self._run(self.tuner.num_collect)
 
     @abstractmethod
     def _run(self, num_collect: int) -> Tuple[Dict[str, Any], AuturiMetric]:
         """Run each actor."""
         raise NotImplementedError
 
+    @abstractmethod
     def terminate(self):
-        pass
+        raise NotImplementedError
