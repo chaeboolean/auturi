@@ -5,7 +5,7 @@ import auturi.test.utils as utils
 from auturi.executor import create_executor
 from auturi.test.utils import check_timeout
 from auturi.tuner import create_tuner_with_config
-from auturi.tuner.config import ActorConfig, TunerConfig
+from auturi.tuner.config import ActorConfig, ParallelizationConfig
 
 VECTOR_BACKEND = "ray"
 
@@ -21,29 +21,29 @@ def create_vector_actor(mode, num_envs, tuner_config):
 
 def test_executor_basic():
     num_envs = 1
-    actor_config = ActorConfig(num_envs)
-    config = TunerConfig(1, {0: actor_config})
+    actor_config = ActorConfig(num_envs, num_collect=3)
+    config = ParallelizationConfig.create([actor_config])
     vector_actor, model = create_vector_actor(VECTOR_BACKEND, num_envs, config)
 
-    rollouts, metric = vector_actor.run(model, num_collect=3)
+    rollouts, metric = vector_actor.run(model)
     check_timeout(metric.elapsed, timeout=1.5 * 3)
     assert rollouts["obs"].shape == (3, 5, 2)
 
 
 def test_multiple_actors():
     num_envs = 9
-    actor_config = ActorConfig(num_envs=3, num_parallel=3, batch_size=3)
-    config = TunerConfig(3, {0: actor_config, 1: actor_config, 2: actor_config})
+    actor_config = ActorConfig(num_envs=3, num_parallel=3, batch_size=3, num_collect=9)
+    config = ParallelizationConfig.create([actor_config] * 3)
     vector_actor, model = create_vector_actor(VECTOR_BACKEND, num_envs, config)
 
-    rollouts, metric = vector_actor.run(model, num_collect=27)
+    rollouts, metric = vector_actor.run(model)
     check_timeout(metric.elapsed, timeout=1.5 * 3)
     assert rollouts["obs"].shape == (27, 5, 2)
 
-    config = TunerConfig(2, {0: actor_config, 1: actor_config})
+    config = ParallelizationConfig.create([actor_config] * 2)
     vector_actor.tuner = create_tuner_with_config(num_envs, config)
 
-    rollouts, metric = vector_actor.run(model, num_collect=18)
+    rollouts, metric = vector_actor.run(model)
     check_timeout(metric.elapsed, timeout=1.5 * 3)
     assert rollouts["obs"].shape == (18, 5, 2)
 

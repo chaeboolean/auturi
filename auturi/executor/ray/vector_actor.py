@@ -12,10 +12,9 @@ from auturi.executor.ray.policy import RayVectorPolicy
 from auturi.executor.vector_actor import AuturiVectorActor
 from auturi.executor.vector_utils import aggregate_partial
 from auturi.tuner import AuturiTuner
-from auturi.tuner.config import ActorConfig, AuturiMetric
+from auturi.tuner.config import AuturiMetric, ParallelizationConfig
 
 
-@ray.remote(num_gpus=0.01)
 class RayActor(AuturiActor):
     """Wrappers run in separated Ray process."""
 
@@ -24,6 +23,10 @@ class RayActor(AuturiActor):
 
     def _create_vector_policy(self, policy_cls: Any, policy_kwargs: Dict[str, Any]):
         return RayVectorPolicy(self.actor_id, policy_cls, policy_kwargs)
+
+    @classmethod
+    def as_remote(cls, num_gpus=0.01):
+        return ray.remote(num_gpus=num_gpus)(cls)
 
 
 class RayVectorActor(AuturiVectorActor):
@@ -38,12 +41,18 @@ class RayVectorActor(AuturiVectorActor):
         super().__init__(env_fns, policy_cls, policy_kwargs, tuner)
 
     def _create_worker(self, worker_id: int) -> AuturiActor:
-        return RayActor.remote(
-            worker_id, self.env_fns, self.policy_cls, self.policy_kwargs
-        )
+        cls = RayActor.as_remote().remote
+        return cls(worker_id, self.env_fns, self.policy_cls, self.policy_kwargs)
 
-    def _reconfigure_worker(self, worker_id: int, worker: RayActor, config):
-        pass
+    def _reconfigure_worker(
+        self,
+        worker_id: int,
+        worker: RayActor,
+        config: ParallelizationConfig,
+        model: nn.Module,
+    ):
+        ref = worker.reconfigure.remote(config, model)
+        self.pending_actors[ref] = worker_id
 
     def _terminate_worker(self, worker_id: int, worker: RayActor):
         del worker
@@ -62,3 +71,8 @@ class RayVectorActor(AuturiVectorActor):
 
         # TODO: metric should not be local_metric.
         return agg_rollouts, rollouts_for_each_actor[0][1]
+
+    def terminate(self):
+        util.clear_pending_list(self.pending_actors)
+        for worker_id, worker in self.workers():
+            self._terminate_worker(worker_id, worker)

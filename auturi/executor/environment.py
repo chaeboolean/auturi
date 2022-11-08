@@ -80,7 +80,6 @@ class AuturiSerialEnv(AuturiEnv):
 
     def set_working_env(self, start_idx: int, num_envs: int):
         """Initialize environments with env_ids."""
-        print(f"Set working env: ", start_idx, num_envs)
         self.start_idx = start_idx
         self.end_idx = start_idx + num_envs
         self.num_envs = num_envs

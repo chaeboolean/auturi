@@ -58,12 +58,10 @@ class ParallelizationConfig:
     """Parallelization configuration for AuturiExecutor, found by AuturiTuner.
 
     Args:
-        num_collect (int): number of trajectories to collect.
         actor_map (frozendict[int, ActorConfig]): maps actor id and actor instance.
 
     """
 
-    num_collect: int
     actor_map: frozendict
 
     def __post_init__(self):
@@ -74,9 +72,8 @@ class ParallelizationConfig:
         assert ctr == self.num_collect
 
     @classmethod
-    def create(cls, num_collect: int, actor_configs: List[ActorConfig]):
+    def create(cls, actor_configs: List[ActorConfig]):
         return cls(
-            num_collect,
             frozendict({idx: config for idx, config in enumerate(actor_configs)}),
         )
 
@@ -86,6 +83,13 @@ class ParallelizationConfig:
     @property
     def num_actors(self):
         return len(self.actor_map)
+
+    @property
+    def num_collect(self):
+        num_collect = 0
+        for _, actor_config in self.actor_map.items():
+            num_collect += actor_config.num_collect
+        return num_collect
 
     @property
     def num_envs(self):

@@ -37,11 +37,12 @@ class AuturiVectorActor(VectorMixin, metaclass=ABCMeta):
         self.policy_kwargs = policy_kwargs
         self.tuner = tuner
 
+        super().__init__()
+
     @property
     def num_actors(self):
         return self.num_workers
 
-    @abstractmethod
     def reconfigure(self, config: ParallelizationConfig, model: nn.Module):
         """Adjust executor's component according to tuner-given config.
 
@@ -50,17 +51,17 @@ class AuturiVectorActor(VectorMixin, metaclass=ABCMeta):
             model (nn.Module): Policy network for compute next actions.
 
         """
-        self.reconfigure_workers(config, model)
+        self.reconfigure_workers(config.num_actors, config, model=model)
 
     def run(self, model: nn.Module) -> Tuple[Dict[str, Any], AuturiMetric]:
-        """Run collection loop with `num_collect` iterations, and return experience trajectories and AuturiMetric."""
+        """Run collection loop with `tuner.num_collect` iterations, and return experience trajectories and AuturiMetric."""
         next_config = self.tuner.next()
         self.reconfigure(next_config, model)
 
-        return self._run(self.tuner.num_collect)
+        return self._run()
 
     @abstractmethod
-    def _run(self, num_collect: int) -> Tuple[Dict[str, Any], AuturiMetric]:
+    def _run(self) -> Tuple[Dict[str, Any], AuturiMetric]:
         """Run each actor."""
         raise NotImplementedError
 

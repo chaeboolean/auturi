@@ -28,7 +28,7 @@ def mock_reconfigure(test_env, num_envs, num_parallel):
         batch_size=num_envs,
         num_collect=100,
     )
-    test_env.reconfigure(ParallelizationConfig.create(100, [config]))
+    test_env.reconfigure(ParallelizationConfig.create([config]))
 
 
 def step_env(test_env, num_envs, num_steps, timeout):

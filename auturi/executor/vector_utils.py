@@ -26,7 +26,9 @@ class VectorMixin(metaclass=ABCMeta):
     def num_workers(self):
         return len(self._workers)
 
-    def reconfigure_workers(self, new_num_workers: int, config: ParallelizationConfig):
+    def reconfigure_workers(
+        self, new_num_workers: int, config: ParallelizationConfig, **kwargs
+    ):
 
         old_workers = self._workers
         new_workers = OrderedDict()
@@ -37,7 +39,7 @@ class VectorMixin(metaclass=ABCMeta):
             else:
                 worker = self._create_worker(worker_id)
 
-            self._reconfigure_worker(worker_id, worker, config)
+            self._reconfigure_worker(worker_id, worker, config, **kwargs)
             new_workers[worker_id] = worker
 
         for worker_id in old_workers.keys():
@@ -56,7 +58,7 @@ class VectorMixin(metaclass=ABCMeta):
 
     @abstractmethod
     def _reconfigure_worker(
-        self, worker_id: int, worker: T, config: ParallelizationConfig
+        self, worker_id: int, worker: T, config: ParallelizationConfig, **kwargs
     ):
         """Create worker."""
         raise NotImplementedError

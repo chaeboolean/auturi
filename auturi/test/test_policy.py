@@ -24,7 +24,7 @@ def mock_reconfigure(test_policy, num_policy, device, model):
         policy_device=device,
         num_collect=100,
     )
-    config = ParallelizationConfig.create(100, [actor_config])
+    config = ParallelizationConfig.create([actor_config])
     test_policy.reconfigure(config, model)
 
 

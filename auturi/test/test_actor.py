@@ -2,8 +2,8 @@ import numpy as np
 
 import auturi.test.utils as utils
 from auturi.executor import create_executor
-from auturi.executor.actor import AuturiActor
-from auturi.tuner.config import ActorConfig
+from auturi.executor.ray.vector_actor import RayActor
+from auturi.tuner.config import ActorConfig, ParallelizationConfig
 
 VECTOR_BACKEND = "ray"
 
@@ -12,17 +12,17 @@ def create_actor(mode, num_envs):
     env_fns = utils.create_env_fns(num_envs)
     model, policy_cls, policy_kwargs = utils.create_policy_args()
 
-    dummy_vec_actor = create_executor(env_fns, policy_cls, policy_kwargs, None, mode)
-    vector_env_fn = dummy_vec_actor.vector_env_fn
-    vector_policy_fn = dummy_vec_actor.vector_policy_fn
-    dummy_vec_actor.terminate()
-
-    actor = AuturiActor(vector_env_fn, vector_policy_fn)
+    actor = RayActor(0, env_fns, policy_cls, policy_kwargs)
     return actor, model
 
 
-def run_actor(actor, num_collect):
-    trajectories, metric = actor.run(num_collect=num_collect)
+def mock_reconfigure(test_actor, actor_config, model):
+    config = ParallelizationConfig.create([actor_config])
+    test_actor.reconfigure(config, model)
+
+
+def run_actor(actor):
+    trajectories, metric = actor.run()
     action_list = [obs_.flat[0] for obs_ in trajectories["action"]]
 
     return np.array(action_list), metric.elapsed
@@ -30,9 +30,11 @@ def run_actor(actor, num_collect):
 
 def test_single_env_single_policy():
     actor, model = create_actor(VECTOR_BACKEND, num_envs=1)
-    actor_config = ActorConfig(num_envs=1, num_policy=1, num_parallel=1, batch_size=1)
-    actor.reconfigure(actor_config, model)
-    action_list, elapsed = run_actor(actor, num_collect=3)
+    actor_config = ActorConfig(
+        num_envs=1, num_policy=1, num_parallel=1, batch_size=1, num_collect=3
+    )
+    mock_reconfigure(actor, actor_config, model)
+    action_list, elapsed = run_actor(actor)
 
     assert np.all(action_list == np.array([1, 2, 3]))
 
@@ -42,10 +44,12 @@ def test_single_env_single_policy():
 
 def test_serial_env_single_policy():
     actor, model = create_actor(VECTOR_BACKEND, num_envs=4)
-    actor_config = ActorConfig(num_envs=2, num_policy=1, num_parallel=1, batch_size=2)
-    actor.reconfigure(actor_config, model)
+    actor_config = ActorConfig(
+        num_envs=2, num_policy=1, num_parallel=1, batch_size=2, num_collect=6
+    )
+    mock_reconfigure(actor, actor_config, model)
 
-    action_list, elapsed = run_actor(actor, num_collect=6)
+    action_list, elapsed = run_actor(actor)
     print(action_list, elapsed)
 
     assert np.all(action_list == np.array([1, 2, 3, 1, 2, 3]))
@@ -56,10 +60,12 @@ def test_serial_env_single_policy():
 
 def test_parallel_env_single_policy():
     actor, model = create_actor(VECTOR_BACKEND, num_envs=4)
-    actor_config = ActorConfig(num_envs=3, num_policy=1, num_parallel=3, batch_size=3)
-    actor.reconfigure(actor_config, model)
+    actor_config = ActorConfig(
+        num_envs=3, num_policy=1, num_parallel=3, batch_size=3, num_collect=9
+    )
+    mock_reconfigure(actor, actor_config, model)
 
-    action_list, elapsed = run_actor(actor, num_collect=9)
+    action_list, elapsed = run_actor(actor)
 
     assert np.all(action_list == np.array([1, 2, 3, 1, 2, 3, 1, 2, 3]))
 
@@ -71,18 +77,22 @@ def test_parallel_and_serial_env_single_policy():
     actor, model = create_actor(VECTOR_BACKEND, num_envs=4)
 
     # Case 1) batch size = 4
-    actor_config = ActorConfig(num_envs=4, num_policy=1, num_parallel=2, batch_size=4)
-    actor.reconfigure(actor_config, model)
-    action_list, elapsed = run_actor(actor, num_collect=4 * 3)
+    actor_config = ActorConfig(
+        num_envs=4, num_policy=1, num_parallel=2, batch_size=4, num_collect=12
+    )
+    mock_reconfigure(actor, actor_config, model)
+    action_list, elapsed = run_actor(actor)
 
     assert np.all(action_list == np.array([1, 2, 3] * 4))
     # one step takes 0.5(env[0].step) + 0.5(env[1].step)+ 1 (policy)
     utils.check_timeout(elapsed, timeout=2 * 3)
 
     # Case 2) batch size = 2
-    actor_config = ActorConfig(num_envs=4, num_policy=1, num_parallel=2, batch_size=2)
-    actor.reconfigure(actor_config, model)
-    action_list, elapsed = run_actor(actor, num_collect=2 * 4)
+    actor_config = ActorConfig(
+        num_envs=4, num_policy=1, num_parallel=2, batch_size=2, num_collect=8
+    )
+    mock_reconfigure(actor, actor_config, model)
+    action_list, elapsed = run_actor(actor)
 
     env_action = action_list[:2], action_list[2:4], action_list[4:6], action_list[6:]
     assert np.all(env_action[0] == env_action[1])
@@ -98,25 +108,33 @@ def test_parallel_and_serial_env_single_policy():
 def test_parallel_env_async():
     actor, model = create_actor(VECTOR_BACKEND, num_envs=4)
 
-    actor_config = ActorConfig(num_envs=4, num_policy=1, num_parallel=4, batch_size=2)
-    actor.reconfigure(actor_config, model)
-    action_list, elapsed = run_actor(actor, num_collect=2 * 4)
+    actor_config = ActorConfig(
+        num_envs=4, num_policy=1, num_parallel=4, batch_size=2, num_collect=8
+    )
+    mock_reconfigure(actor, actor_config, model)
+    action_list, elapsed = run_actor(actor)
     utils.check_timeout(elapsed, timeout=4.5)
 
 
 def test_parallel_env_multiple_policy():
     actor, model = create_actor(VECTOR_BACKEND, num_envs=4)
 
-    actor_config = ActorConfig(num_envs=4, num_policy=1, num_parallel=4, batch_size=1)
-    actor.reconfigure(actor_config, model)
-    action_list, elapsed = run_actor(actor, num_collect=4)
+    actor_config = ActorConfig(
+        num_envs=4, num_policy=1, num_parallel=4, batch_size=1, num_collect=4
+    )
+    mock_reconfigure(actor, actor_config, model)
+    action_list, elapsed = run_actor(
+        actor,
+    )
 
     assert set(action_list) == set([1, 2, 3, 4])
     utils.check_timeout(elapsed, timeout=4.5)
 
-    actor_config = ActorConfig(num_envs=4, num_policy=2, num_parallel=4, batch_size=1)
-    actor.reconfigure(actor_config, model)
-    action_list, elapsed = run_actor(actor, num_collect=4)
+    actor_config = ActorConfig(
+        num_envs=4, num_policy=2, num_parallel=4, batch_size=1, num_collect=4
+    )
+    mock_reconfigure(actor, actor_config, model)
+    action_list, elapsed = run_actor(actor)
 
     assert set(action_list) == set([1, 2, 11, 12])
     utils.check_timeout(elapsed, timeout=2.5)

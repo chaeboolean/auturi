@@ -27,6 +27,7 @@ class AuturiActor(metaclass=ABCMeta):
         self.actor_id = actor_id
         self.vector_envs = self._create_vector_env(env_fns)
         self.vector_policy = self._create_vector_policy(policy_cls, policy_kwargs)
+        self.num_collect = -1  # should be intiailzied by given ParallelizationConfig
 
     @abstractmethod
     def _create_vector_env(
@@ -46,38 +47,40 @@ class AuturiActor(metaclass=ABCMeta):
         """Reconfigure the number of envs and policies according to a given config found by AuturiTuner."""
 
         # Adjust Policy
-        self.policy.reconfigure(config, model)
+        self.vector_policy.reconfigure(config, model)
 
         # Adjust Environment
-        self.envs.reconfigure(config)
+        self.vector_envs.reconfigure(config)
 
-    def run(self, num_collect: int) -> Tuple[Dict[str, Any], AuturiMetric]:
+        self.num_collect = config[self.actor_id].num_collect
+
+    def run(self) -> Tuple[Dict[str, Any], AuturiMetric]:
         """Run collection loop for num_collect iterations, and return experience trajectories."""
 
-        self.policy.start_loop()
-        self.envs.start_loop()
+        self.vector_policy.start_loop()
+        self.vector_envs.start_loop()
 
         n_steps = 0
         start_time = time.perf_counter()
-        while n_steps < num_collect:
-            obs_refs = self.envs.poll()
+        while n_steps < self.num_collect:
+            obs_refs = self.vector_envs.poll()
             # print("obs_res -> ", ray.get(list(obs_refs.values()))[0].shape)
 
-            action_refs = self.policy.compute_actions(obs_refs, n_steps)
+            action_refs = self.vector_policy.compute_actions(obs_refs, n_steps)
             # print("action_refs -> ", ray.get(action_refs)[0].shape)
 
-            self.envs.send_actions(action_refs)
+            self.vector_envs.send_actions(action_refs)
 
-            n_steps += self.envs.batch_size  # len(obs_refs)
+            n_steps += self.vector_envs.batch_size  # len(obs_refs)
 
-        self.policy.stop_loop()
-        self.envs.stop_loop()
+        self.vector_policy.stop_loop()
+        self.vector_envs.stop_loop()
         end_time = time.perf_counter()
 
-        return self.envs.aggregate_rollouts(), AuturiMetric(
-            num_collect, end_time - start_time
+        return self.vector_envs.aggregate_rollouts(), AuturiMetric(
+            self.num_collect, end_time - start_time
         )
 
     def terminate(self):
-        self.policy.terminate()
-        self.envs.terminate()
+        self.vector_policy.terminate()
+        self.vector_envs.terminate()
