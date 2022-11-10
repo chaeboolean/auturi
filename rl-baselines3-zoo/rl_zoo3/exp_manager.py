@@ -572,21 +572,22 @@ class ExperimentManager:
 
         if self._is_football:
             env_fns = [football.make_env(self.env_name, rank=i) for i in range(n_envs)]
-            return self.vec_env_class(env_fns, **self.vec_env_kwargs)
+            env = self.vec_env_class(env_fns, **self.vec_env_kwargs)
 
-        # On most env, SubprocVecEnv does not help and is quite memory hungry
-        # therefore we use DummyVecEnv by default
-        env = make_vec_env(
-            env_id=self.env_name.gym_id,
-            n_envs=n_envs,
-            seed=self.seed,
-            env_kwargs=self.env_kwargs,
-            monitor_dir=log_dir,
-            wrapper_class=self.env_wrapper,
-            vec_env_cls=self.vec_env_class,
-            vec_env_kwargs=self.vec_env_kwargs,
-            monitor_kwargs=monitor_kwargs,
-        )
+        else:
+            # On most env, SubprocVecEnv does not help and is quite memory hungry
+            # therefore we use DummyVecEnv by default
+            env = make_vec_env(
+                env_id=self.env_name.gym_id,
+                n_envs=n_envs,
+                seed=self.seed,
+                env_kwargs=self.env_kwargs,
+                monitor_dir=log_dir,
+                wrapper_class=self.env_wrapper,
+                vec_env_cls=self.vec_env_class,
+                vec_env_kwargs=self.vec_env_kwargs,
+                monitor_kwargs=monitor_kwargs,
+            )
 
         if self.vec_env_wrapper is not None:
             env = self.vec_env_wrapper(env)

@@ -4,7 +4,8 @@
 football:
   policy: 'CnnPolicy'
   learning_rate: 0.000343
-  n_steps: 512 
+  n_envs: 16
+  n_steps: 128 # 512 
   batch_size: 8 
   n_epochs: 2 
   gamma: 0.993
