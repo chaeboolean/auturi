@@ -2,7 +2,7 @@ import gym
 import numpy as np
 
 from auturi.executor.environment import AuturiEnv
-
+import time
 
 class SB3LocalRolloutBuffer:
     def __init__(self):
@@ -67,6 +67,7 @@ class SB3EnvAdapter(AuturiEnv):
         self._last_episode_starts = False
 
         self.local_buffer = SB3LocalRolloutBuffer()
+        self.time_ms = []
 
     # Should explicitly call reset() before data collection.
     def reset(self):
@@ -78,6 +79,7 @@ class SB3EnvAdapter(AuturiEnv):
     def step(self, actions, action_artifacts):
         """Return only observation, which policy worker needs."""
 
+        start_time = time.perf_counter()
         # assert actions.shape == self.action_space.shape
         # process action-related values.
         if isinstance(self.action_space, gym.spaces.Discrete):
@@ -118,9 +120,17 @@ class SB3EnvAdapter(AuturiEnv):
         self._last_obs = new_obs
         self._last_episode_starts = done
 
+        end_time = time.perf_counter()
+        self.time_ms.append(end_time-start_time)
+
         return new_obs
 
     def aggregate_rollouts(self):
+        if len(self.time_ms) > 0:
+            with open("env.txt", "w"):
+                print(self.time_ms)
+            self.time_ms.clear()
+
         return self.local_buffer.get_local_rollouts()
 
     def terminate(self):

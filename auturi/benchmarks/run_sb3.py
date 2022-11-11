@@ -6,6 +6,7 @@ from rl_zoo3.exp_manager import ExperimentManager
 
 from auturi.adapter.sb3 import wrap_sb3_OnPolicyAlgorithm
 from auturi.tuner.grid_search import GridSearchTuner
+from auturi.tuner import create_tuner_with_config, TunerConfig, ActorConfig
 
 
 def create_sb3_algorithm(args, num_iteration, vec_cls="dummy"):
@@ -31,6 +32,7 @@ def create_sb3_algorithm(args, num_iteration, vec_cls="dummy"):
 
 
 def run(args):
+    print(args)
     # create ExperimentManager with minimum argument.
     num_iteration = -1 if args.running_mode == "auturi" else args.num_iteration
     vec_cls = "dummy" if args.running_mode == "auturi" else args.running_mode
@@ -38,9 +40,10 @@ def run(args):
 
     if args.running_mode == "auturi":
         n_envs = exp_manager.n_envs
-        tuner = GridSearchTuner(
-            n_envs, n_envs, max_policy_num=8, num_iterate=args.num_iteration
-        )
+        # tuner = GridSearchTuner(
+        #     n_envs, n_envs, max_policy_num=8, num_iterate=args.num_iteration
+        # )
+        tuner = create_tuner_with_config(1, TunerConfig({0: ActorConfig(policy_device="cpu")}))
         wrap_sb3_OnPolicyAlgorithm(model, tuner=tuner)
         try:
             exp_manager.learn(model)
@@ -50,7 +53,6 @@ def run(args):
 
     else:
         exp_manager.learn(model)
-        print(model.collect_times)
 
 
 if __name__ == "__main__":
