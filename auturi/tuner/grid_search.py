@@ -1,13 +1,13 @@
 from typing import Callable, Optional
 
 from auturi.tuner.base_tuner import AuturiTuner
-from auturi.tuner.config import ActorConfig, TunerConfig
+from auturi.tuner.config import ActorConfig, ParallelizationConfig
 
 
 class GridSearchTuner(AuturiTuner):
     """AuturiTuner for Grid Search.
 
-    For now, it only yeilds the TunerConfig with same ActorConfig.
+    For now, it only yeilds the ParallelizationConfig with same ActorConfig.
 
     Additional Args:
         max_policy_num (int): Upper bound for number of policies and actors. TO BE FIXED.
@@ -47,9 +47,7 @@ def naive_grid_generator(num_envs, num_max_policy, validator):
 
         for actor_config in _possible_actors(num_env_per_actor, num_policy_per_actor):
             try:
-                tuner_config = TunerConfig(
-                    {_id: actor_config for _id in range(num_actors)}
-                )
+                tuner_config = ParallelizationConfig.create([actor_config] * num_actors)
                 tuner_config.validate(
                     num_envs, num_envs, num_max_policy, validator=validator
                 )

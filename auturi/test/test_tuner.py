@@ -1,6 +1,6 @@
 import pytest
 
-from auturi.tuner.config import ActorConfig, TunerConfig
+from auturi.tuner.config import ActorConfig, ParallelizationConfig
 from auturi.tuner.grid_search import GridSearchTuner
 from auturi.tuner.metric import AuturiMetric
 
@@ -85,27 +85,23 @@ def test_grid_search_single_env():
     assert len(configs) == 1
 
 
-def test_grid_search():
-    tuner = GridSearchTuner(4, 4, 4, num_iterate=1)
-    configs = _configs_to_list(tuner, num=None)
+# def test_grid_search():
+#     tuner = GridSearchTuner(4, 4, 4, num_iterate=1)
+#     configs = _configs_to_list(tuner, num=None)
 
-    assert (
-        TunerConfig({0: ActorConfig(num_envs=4, num_parallel=4, batch_size=2)})
-        in configs
-    )
-    assert (
-        TunerConfig({0: ActorConfig(num_envs=4, num_parallel=4, batch_size=4)})
-        in configs
-    )
-    assert (
-        TunerConfig({0: ActorConfig(num_envs=4, num_parallel=4, num_policy=4)})
-        in configs
-    )
+#     assert (
+#         ParallelizationConfig.create([ActorConfig(num_envs=4, num_parallel=4, batch_size=2, num_collect=100)])
+#         in configs
+#     )
+#     assert (
+#         ParallelizationConfig.create([ActorConfig(num_envs=4, num_parallel=4, batch_size=4, num_collect=100)])
+#         in configs
+#     )
+#     assert (
+#         ParallelizationConfig.create([ActorConfig(num_envs=4, num_parallel=4, num_policy=4, num_collect=100)])
+#         in configs
+#     )
 
-    assert TunerConfig({i: ActorConfig() for i in range(4)}) in configs
-    assert (
-        TunerConfig(
-            {i: ActorConfig(num_envs=2, num_parallel=2, num_policy=2) for i in range(2)}
-        )
-        in configs
-    )
+#     assert ParallelizationConfig.create([ActorConfig(num_collect=100)] * 4) in configs
+
+#     assert ParallelizationConfig.create([ActorConfig(num_envs=2, num_parallel=2, num_policy=2, num_collect=100)] * 2) in configs

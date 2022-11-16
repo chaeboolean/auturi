@@ -1,7 +1,7 @@
 from abc import ABCMeta, abstractmethod
 from enum import Enum
 
-from auturi.tuner.config import TunerConfig
+from auturi.tuner.config import ParallelizationConfig
 from auturi.tuner.metric import AuturiMetric, AuturiNotEnoughSampleError, MetricRecorder
 
 
@@ -30,13 +30,20 @@ class TunerState:
 
 
 class AuturiTuner(metaclass=ABCMeta):
-    def __init__(self, min_num_env: int, max_num_env: int, num_iterate: int = 10):
+    def __init__(
+        self,
+        min_num_env: int,
+        max_num_env: int,
+        num_collect: int,
+        num_iterate: int = 10,
+    ):
         """AuturiTuner Initialization.
 
         Args:
             min_num_env (int): Minimum number of total environments.
             max_num_env (int): Maximum number of total environments.
             num_iterate (int): Keeps the same config for num_iterate times to get consistent throughput.
+            num_collect (int): Number of trajectories to collect.
 
         """
         assert min_num_env <= max_num_env
@@ -50,7 +57,7 @@ class AuturiTuner(metaclass=ABCMeta):
 
         self.curr_config = self._generate_next()
 
-    def next(self) -> TunerConfig:
+    def next(self) -> ParallelizationConfig:
         """Return next TunerConfig to try."""
         self.state.send_config()
         return self.curr_config
@@ -69,11 +76,13 @@ class AuturiTuner(metaclass=ABCMeta):
         self.state.recv_feedback()
 
     @abstractmethod
-    def _generate_next(self) -> TunerConfig:
+    def _generate_next(self) -> ParallelizationConfig:
         """Return next TunerConfig to test."""
         pass
 
     @abstractmethod
-    def _update_tuner(self, config: TunerConfig, mean_metric: AuturiMetric) -> None:
+    def _update_tuner(
+        self, config: ParallelizationConfig, mean_metric: AuturiMetric
+    ) -> None:
         """Update Tuner with (config, mean_metric) tuple."""
         pass

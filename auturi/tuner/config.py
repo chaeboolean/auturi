@@ -1,6 +1,6 @@
 """Typing Definition for Auturi Tuner."""
-from dataclasses import dataclass, field
-from typing import Callable, Dict, Optional
+from dataclasses import dataclass
+from typing import Callable, List, Optional
 
 from frozendict import frozendict
 
@@ -29,6 +29,8 @@ class ActorConfig:
     def __post_init__(self):
         """Validate configurations."""
         # assert self.policy_device in ["cpu", "cuda"]
+        assert self.num_parallel > 0
+
         # SerialEnvs inside the same Actor should have same number of serial envs.
         assert self.num_envs % self.num_parallel == 0
 
@@ -130,38 +132,12 @@ class ParallelizationConfig:
             max_num_policy (int, optional): maximum number of policies.
             validator (Callable[[ActorConfig], bool]): Additional user-defined function.
         """
-        _num_envs = 0
-        _num_policy = 0
 
-        _num_envs += actor_config.num_envs
-        _num_policy += actor_config.num_policy
-
-        assert validator(actor_config)
-
-        assert _num_envs >= min_num_envs and _num_envs <= max_num_envs
-        assert _num_policy <= max_num_policy
+        assert self.num_envs >= min_num_envs and self.num_envs <= max_num_envs
+        assert self.num_policy <= max_num_policy
 
         if validator is None:
             validator = lambda x: True
 
-        for _, actor_config in self.items():
+        for _, actor_config in self.actor_map.items():
             assert validator(actor_config)
-
-
-@dataclass
-class AuturiMetric:
-    """Metrics that an AuturiActor collects every run of a collection loop.
-
-    Args:
-        num_trajectories (int): number of trajectories collected.
-        elapsed (float): second.
-        throughput (float): the number of trajectories per second
-
-    """
-
-    num_trajectories: int
-    elapsed: float
-    throughput: float = -1
-
-    def __post_init__(self):
-        self.throughput = self.num_trajectories / self.elapsed

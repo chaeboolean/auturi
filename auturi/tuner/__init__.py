@@ -1,5 +1,6 @@
 from auturi.tuner.base_tuner import AuturiTuner
-from auturi.tuner.config import ParallelizationConfig, AuturiMetric, ActorConfig
+from auturi.tuner.config import ActorConfig, ParallelizationConfig
+from auturi.tuner.metric import AuturiMetric
 
 
 def create_tuner_with_config(num_envs: int, config: ParallelizationConfig):

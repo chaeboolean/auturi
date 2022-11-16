@@ -1,30 +1,36 @@
 import pytest
 
-from auturi.tuner.config import ActorConfig, TunerConfig
+from auturi.tuner.config import ActorConfig, ParallelizationConfig
 from auturi.tuner.metric import AuturiMetric, AuturiNotEnoughSampleError, MetricRecorder
 
 
 def test_actor_config():
     assert ActorConfig() == ActorConfig()
-    assert ActorConfig() != ActorConfig(num_envs=2, batch_size=2)
+    assert ActorConfig() != ActorConfig(num_envs=2, batch_size=2, num_collect=100)
 
     with pytest.raises(AssertionError):
-        ActorConfig(num_envs=2, num_parallel=3)
+        ActorConfig(num_envs=2, num_parallel=3, num_collect=100)
 
     with pytest.raises(AssertionError):
-        ActorConfig(num_envs=4, num_parallel=3)
+        ActorConfig(num_envs=4, num_parallel=3, num_collect=100)
 
     with pytest.raises(AssertionError):
-        ActorConfig(num_envs=4, num_parallel=2, batch_size=1)
+        ActorConfig(num_envs=4, num_parallel=2, batch_size=1, num_collect=100)
 
     with pytest.raises(AssertionError):
-        ActorConfig(num_envs=0, num_parallel=0)
+        ActorConfig(num_envs=0, num_parallel=0, num_collect=100)
 
 
 def test_tuner_config():
-    config_1 = TunerConfig({0: ActorConfig(num_envs=2, batch_size=2)})
-    config_2 = TunerConfig({0: ActorConfig(num_envs=2, batch_size=2)})
-    config_3 = TunerConfig({0: ActorConfig(num_envs=2, num_parallel=2)})
+    config_1 = ParallelizationConfig.create(
+        [ActorConfig(num_envs=2, batch_size=2, num_collect=100)]
+    )
+    config_2 = ParallelizationConfig.create(
+        [ActorConfig(num_envs=2, batch_size=2, num_collect=100)]
+    )
+    config_3 = ParallelizationConfig.create(
+        [ActorConfig(num_envs=2, num_parallel=2, num_collect=100)]
+    )
 
     assert config_1 == config_2
     assert config_2 != config_3
@@ -45,11 +51,15 @@ def test_metric():
 def test_metric_recorder():
     recorder = MetricRecorder(num_iterate=2)
 
-    config_1 = TunerConfig({0: ActorConfig(num_envs=2, batch_size=2)})
-    config_2 = TunerConfig(
-        {0: ActorConfig(num_envs=2, batch_size=2)}
+    config_1 = ParallelizationConfig.create(
+        [ActorConfig(num_envs=2, batch_size=2, num_collect=100)]
+    )
+    config_2 = ParallelizationConfig.create(
+        [ActorConfig(num_envs=2, batch_size=2, num_collect=100)]
     )  # equals with config_1
-    config_3 = TunerConfig({0: ActorConfig(num_envs=2, num_parallel=2)})
+    config_3 = ParallelizationConfig.create(
+        [ActorConfig(num_envs=2, num_parallel=2, num_collect=100)]
+    )
 
     recorder.add(config_1, AuturiMetric(10, 1))
     recorder.add(config_3, AuturiMetric(10, 1))

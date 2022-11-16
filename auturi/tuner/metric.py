@@ -2,7 +2,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
-from auturi.tuner.config import TunerConfig
+from auturi.tuner.config import ParallelizationConfig
 
 
 class AuturiNotEnoughSampleError(Exception):
@@ -34,18 +34,18 @@ class MetricRecorder:
         self.records = defaultdict(list)
 
     def _insert_record(
-        self, _dict: Dict[Any, Any], config: TunerConfig, metric: AuturiMetric
+        self, _dict: Dict[Any, Any], config: ParallelizationConfig, metric: AuturiMetric
     ):
         _dict[hash(config)].append(metric)
 
-    def _get_record(self, _dict: Dict[Any, Any], config: TunerConfig):
+    def _get_record(self, _dict: Dict[Any, Any], config: ParallelizationConfig):
         return _dict[hash(config)]
 
-    def add(self, config: TunerConfig, metric: AuturiMetric) -> None:
+    def add(self, config: ParallelizationConfig, metric: AuturiMetric) -> None:
         """Adds given metric to recorder."""
         self._insert_record(self.records, config, metric)
 
-    def get(self, config: TunerConfig, stat="mean") -> AuturiMetric:
+    def get(self, config: ParallelizationConfig, stat="mean") -> AuturiMetric:
 
         records_ = self._get_record(self.records, config)
         if len(records_) < self.num_iterate:
@@ -63,7 +63,7 @@ class MetricRecorder:
         self.reset(config)
         return res
 
-    def reset(self, config: Optional[TunerConfig] = None) -> None:
+    def reset(self, config: Optional[ParallelizationConfig] = None) -> None:
         if config is None:
             self.records.clear()
 
