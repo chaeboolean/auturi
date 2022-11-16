@@ -85,6 +85,8 @@ class SHMParallelEnv(AuturiVectorEnv, SHMVectorLoopMixin):
     # Internally call reset.
     def start_loop(self):
         self.env_counter.fill(0)
+        self.queue.pop("all")
+        assert np.all(self._get_env_state() == EnvStateEnum.STOPPED)
         SHMVectorLoopMixin.start_loop(self)
 
     def stop_loop(self):

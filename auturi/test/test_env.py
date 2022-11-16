@@ -3,9 +3,10 @@ import numpy as np
 import auturi.test.utils as utils
 from auturi.executor.environment import AuturiSerialEnv, AuturiVectorEnv
 from auturi.executor.ray import RayParallelEnv
+from auturi.test.shm_utils import SHMParallelEnvTester
 from auturi.tuner.config import ActorConfig, ParallelizationConfig
 
-VECTOR_BACKEND = "ray"
+VECTOR_BACKEND = "shm"
 
 
 def create_env(mode, num_envs, num_parallel=-1):
@@ -16,6 +17,10 @@ def create_env(mode, num_envs, num_parallel=-1):
 
     elif mode == "ray":
         test_envs = RayParallelEnv(0, env_fns)
+        mock_reconfigure(test_envs, num_envs, num_parallel)
+
+    elif mode == "shm":
+        test_envs = SHMParallelEnvTester.create(env_fns)
         mock_reconfigure(test_envs, num_envs, num_parallel)
 
     return test_envs
@@ -40,6 +45,9 @@ def step_env(test_env, num_envs, num_steps, timeout):
 
     test_env.seed(-1)
     test_env.reset()
+
+    if isinstance(test_env, SHMParallelEnvTester):
+        test_env.set_num_steps(num_steps * num_envs)
 
     with utils.Timeout(min_sec=timeout - 0.5, max_sec=timeout + 0.5):
         if isinstance(test_env, AuturiVectorEnv):
@@ -103,6 +111,13 @@ def test_vector_env_basic():
     assert vector_env.num_envs == 1
     assert vector_env.num_workers == 1
     step_env(vector_env, num_envs=1, num_steps=3, timeout=0.5 * 3)
+
+    # stop and restart
+    step_env(vector_env, num_envs=1, num_steps=3, timeout=0.5 * 3)
+
+    # stop and restart
+    step_env(vector_env, num_envs=1, num_steps=3, timeout=0.5 * 3)
+
     vector_env.terminate()
 
 
@@ -123,7 +138,6 @@ def test_serial():
     assert vector_env.num_workers == 1
 
     agg_obs = step_env(vector_env, num_envs=2, num_steps=3, timeout=(0.5 + 0.5) * 3)
-    print(agg_obs)
     assert max(agg_obs) == 2003
     assert min(agg_obs) == 1001
     vector_env.terminate()
@@ -144,6 +158,7 @@ def test_reconfigure():
     vector_env = create_env(VECTOR_BACKEND, 4, 2)
 
     mock_reconfigure(vector_env, num_envs=1, num_parallel=1)
+
     assert vector_env.num_envs == 1
     assert vector_env.num_workers == 1
     agg_obs1 = step_env(vector_env, num_envs=1, num_steps=3, timeout=0.5 * 3)
@@ -167,16 +182,18 @@ def test_reconfigure():
 def test_rollouts():
     vector_env = create_env(VECTOR_BACKEND, 4, 1)
     mock_reconfigure(vector_env, num_envs=4, num_parallel=1)
-    agg_obs = step_env(
+    agg_obs1 = step_env(
         vector_env, num_envs=4, num_steps=2, timeout=(0.5 + 0.5 + 0.5 + 0.5) * 2
     )
-    assert len(agg_obs) == 8
 
     mock_reconfigure(vector_env, num_envs=4, num_parallel=2)
-    agg_obs = step_env(vector_env, num_envs=4, num_steps=2, timeout=(0.5 + 0.5) * 2)
-    assert len(agg_obs) == 8
+    agg_obs2 = step_env(vector_env, num_envs=4, num_steps=2, timeout=(0.5 + 0.5) * 2)
 
     mock_reconfigure(vector_env, num_envs=4, num_parallel=4)
-    agg_obs = step_env(vector_env, num_envs=4, num_steps=2, timeout=(0.5) * 2)
-    assert len(agg_obs) == 8
+    agg_obs3 = step_env(vector_env, num_envs=4, num_steps=2, timeout=(0.5) * 2)
     vector_env.terminate()
+
+    # assert all results equal.
+    assert len(agg_obs1) == 8
+    assert np.all(agg_obs1 == agg_obs2)
+    assert np.all(agg_obs1 == agg_obs3)

@@ -80,9 +80,7 @@ class SHMEnvProc(SHMProcLoopMixin):
 
     def _step_loop_once(self, is_first: bool) -> None:
         if is_first:
-            assert np.all(
-                self._get_env_state() == EnvStateEnum.STOPPED
-            ), f"curr={self._get_env_state()}"
+            assert np.all(self._get_env_state() == EnvStateEnum.STOPPED)
 
             logger.debug(self.identifier + "Entered the loop.")
 
