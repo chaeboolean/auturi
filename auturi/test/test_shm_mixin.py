@@ -3,10 +3,10 @@ from multiprocessing import shared_memory as shm
 
 import numpy as np
 
-from auturi.executor.shm.mp_mixin import Request, SHMProcMixin, SHMVectorMixin
+from auturi.executor.shm.mp_mixin import Request, SHMProcLoopMixin, SHMVectorLoopMixin
 
 
-class _TestVector(SHMVectorMixin):
+class _TestVector(SHMVectorLoopMixin):
     def __init__(self):
         shape = (80,)
         self.__buffer = shm.SharedMemory(create=True, size=4 * 80)
@@ -15,11 +15,15 @@ class _TestVector(SHMVectorMixin):
 
         super().__init__()
 
+    @property
+    def identifier(self):
+        return "TestVector"
+
     def reconfigure(self, num_workers: int):
         old_num_wokers = len(self.workers)
         for worker_id in range(old_num_wokers):
             if worker_id >= num_workers:
-                self.terminate_worker(worker_id)
+                self.teardown_handler(worker_id)
                 self.workers[worker_id].join()
                 del self.workers[worker_id]
 
@@ -33,14 +37,20 @@ class _TestVector(SHMVectorMixin):
         self.sync()
 
     def terminate(self):
-        super().terminate()
+        curr_num_workers = len(self._request_handlers)
+        for wid in range(curr_num_workers):
+            self.teardown_handler(wid)
         self.__buffer.unlink()
 
 
-class _TestProc(SHMProcMixin):
+class _TestProc(SHMProcLoopMixin):
     def __init__(self, worker_id, req_queue, rep_queue, buf_name: str):
         self.buf_name = buf_name
         super().__init__(worker_id, req_queue=req_queue, rep_queue=rep_queue)
+
+    @property
+    def identifier(self):
+        return "TestProc"
 
     def initialize(self) -> None:
         self.__buffer = shm.SharedMemory(self.buf_name)
@@ -74,8 +84,8 @@ def test_basic():
     buffer = vector_manager.buffer
     vector_manager.reconfigure(2)
 
-    vector_manager.request(Request(cmd="RESET"))
-    vector_manager.request(Request(cmd="INCR", data=[2]))
+    vector_manager.request(cmd="RESET")
+    vector_manager.request(cmd="INCR", data=[2])
     vector_manager.sync()
     assert buffer[0] == 2
 
@@ -89,14 +99,14 @@ def test_multiple_children():
     buffer = vector_manager.buffer
     vector_manager.reconfigure(50)
 
-    vector_manager.request(Request(cmd="RESET"))
-    vector_manager.request(Request(cmd="INCR", data=[2]))
+    vector_manager.request(cmd="RESET")
+    vector_manager.request(cmd="INCR", data=[2])
     vector_manager.sync()
     assert np.all(buffer[:50] == 2)
 
-    vector_manager.request(Request(cmd="INCR", data=[2], worker_id=7))
-    vector_manager.request(Request(cmd="INCR", data=[2], worker_id=8))
-    vector_manager.request(Request(cmd="DECR", data=[10], worker_id=9))
+    vector_manager.request(cmd="INCR", data=[2], worker_id=7)
+    vector_manager.request(cmd="INCR", data=[2], worker_id=8)
+    vector_manager.request(cmd="DECR", data=[10], worker_id=9)
     vector_manager.sync()
     assert np.all(buffer[7:10] == np.array([4, 4, -8]))
 
@@ -108,23 +118,23 @@ def test_reconfigure():
     buffer = vector_manager.buffer
     vector_manager.reconfigure(10)
 
-    vector_manager.request(Request(cmd="RESET"))
-    vector_manager.request(Request(cmd="INCR", data=[1]))
-    vector_manager.request(Request(cmd="INCR", data=[1]))
-    vector_manager.request(Request(cmd="INCR", data=[1]))
+    vector_manager.request(cmd="RESET")
+    vector_manager.request(cmd="INCR", data=[1])
+    vector_manager.request(cmd="INCR", data=[1])
+    vector_manager.request(cmd="INCR", data=[1])
     vector_manager.sync()
     assert np.all(buffer[:10] == 3)
 
     vector_manager.reconfigure(60)
-    vector_manager.request(Request(cmd="RESET"))
-    vector_manager.request(Request(cmd="INCR", data=[1]))
-    vector_manager.request(Request(cmd="INCR", data=[1]))
+    vector_manager.request(cmd="RESET")
+    vector_manager.request(cmd="INCR", data=[1])
+    vector_manager.request(cmd="INCR", data=[1])
     vector_manager.sync()
     assert np.all(buffer[:60] == 2)
 
     vector_manager.reconfigure(20)
-    vector_manager.request(Request(cmd="RESET"))
-    vector_manager.request(Request(cmd="DECR", data=[1]))
+    vector_manager.request(cmd="RESET")
+    vector_manager.request(cmd="DECR", data=[1])
     vector_manager.sync()
     assert np.all(buffer[:20] == -1)
     assert np.all(buffer[20:60] == 2)
@@ -136,17 +146,17 @@ def test_run_loop():
     buffer = vector_manager.buffer
     vector_manager.reconfigure(10)
 
-    vector_manager.request(Request(cmd="RESET"))
-    vector_manager.request(Request(cmd="RUN_LOOP"))
+    vector_manager.request(cmd="RESET")
+    vector_manager.request(cmd="RUN_LOOP")
     time.sleep(0.9)
-    vector_manager.request(Request(cmd="STOP_LOOP"))
+    vector_manager.request(cmd="STOP_LOOP")
     vector_manager.sync()
     assert np.all(buffer[:10] == 2)
 
-    vector_manager.request(Request(cmd="RESET"))
-    vector_manager.request(Request(cmd="RUN_LOOP"))
+    vector_manager.request(cmd="RESET")
+    vector_manager.request(cmd="RUN_LOOP")
     time.sleep(1.6)
-    vector_manager.request(Request(cmd="STOP_LOOP"))
+    vector_manager.request(cmd="STOP_LOOP")
     vector_manager.sync()
     assert np.all(buffer[:10] == 4)
 
