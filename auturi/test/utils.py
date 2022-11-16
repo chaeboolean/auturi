@@ -63,6 +63,7 @@ class DumbEnv(AuturiEnv):
         self.observation_space = gym.spaces.Box(
             low=-10, high=30, shape=(5, 2), dtype=np.float32
         )
+        self.artifacts_samples = [self.action_space.sample()]
         self.metadata = None
 
         self.value = self.observation_space.sample()

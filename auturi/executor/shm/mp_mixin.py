@@ -2,31 +2,20 @@
 
 """
 import queue as naive_queue
-import threading
 from dataclasses import dataclass, field
-from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 import torch.multiprocessing as mp
 
+from auturi.executor.shm.constant import SHMCommand
+from auturi.executor.shm.util import wait
 from auturi.logger import get_logger
 
 # mp = _mp.get_context('spawn')
 
 
 logger = get_logger()
-import time
-
-
-def wait_loop(cond_, debug_msg, timeout=2):
-    last_timeout = time.time()
-    while not cond_():
-        if time.time() - last_timeout > timeout:
-            msg = debug_msg() if callable(debug_msg) else debug_msg
-            logger.debug(msg)
-            print(msg)
-            last_timeout = time.time()
 
 
 @dataclass
@@ -48,7 +37,7 @@ class RequestHandler:
         self.req_queue = mp.Queue()  # master -> worker
         self.rep_queue = mp.Queue()  # worker -> master
         self._called_reqs = naive_queue.Queue()
-        self._called_reqs.put("INIT")
+        self._called_reqs.put(SHMCommand.INIT)
 
     def send_req(self, req: Request):
         self.req_queue.put(req)
@@ -68,9 +57,6 @@ class SHMVectorMixin:
     def __init__(self):
         self._request_handlers: Dict[int, RequestHandler] = dict()
 
-    def reconfigure(self, num_workers: int):
-        pass
-
     def init_proc(self, worker_id: int, proc_cls: Any, kwargs: Dict[str, Any]):
         req_hander = RequestHandler(worker_id)
         kwargs["worker_id"] = worker_id
@@ -88,7 +74,8 @@ class SHMVectorMixin:
             working_ids = [worker_id]
         return working_ids
 
-    def request(self, req: Request):
+    def request(self, cmd: str, worker_id: Optional[int] = None, data: List[Any] = []):
+        req = Request(cmd, data=data, worker_id=worker_id)
         working_ids = self._working_ids(req.worker_id)
         for _worker_id in working_ids:
             self._request_handlers[_worker_id].send_req(req)
@@ -98,15 +85,10 @@ class SHMVectorMixin:
         for _worker_id in working_ids:
             self._request_handlers[_worker_id].sync()
 
-    def terminate_worker(self, worker_id: int):
-        self.request(Request("TERM", worker_id=worker_id))
+    def teardown_handler(self, worker_id: int):
+        self.request(SHMCommand.TERM, worker_id=worker_id)
         self.sync(worker_id)
         del self._request_handlers[worker_id]
-
-    def terminate(self):
-        self.request(Request("TERM"))
-        self.sync()
-        # join
 
 
 class SHMProcMixin(mp.Process):
@@ -125,10 +107,10 @@ class SHMProcMixin(mp.Process):
         """
         # Does not change during runtime
         self.worker_id = worker_id
-        self.req_queue = req_queue
-        self.rep_queue = rep_queue
+        self._req_queue = req_queue
+        self._rep_queue = rep_queue
 
-        self.cmd_handler = {"TERM": self._term_handler}
+        self.cmd_handler = {SHMCommand.TERM: self._term_handler}
 
         super().__init__()
 
@@ -144,27 +126,42 @@ class SHMProcMixin(mp.Process):
         raise NotImplementedError
 
     def reply(self, cmd: str) -> None:
-        self.rep_queue.put(Reply(worker_id=self.worker_id, cmd=cmd))
+        self._rep_queue.put(Reply(worker_id=self.worker_id, cmd=cmd))
 
     def run(self):
         self.initialize()
         self.set_handler_for_command()
-        self.reply("INIT")
+        self.reply(SHMCommand.INIT)
 
         while True:
             # req = self.queue.get()
-            wait_loop(
-                lambda: not self.req_queue.empty(),
+            wait(
+                lambda: not self._req_queue.empty(),
                 f"{self.worker_id} Waitign for queue... ",
             )
-            req = self.req_queue.get()
+            req = self._req_queue.get()
 
             logger.debug(f"Worker({self.worker_id}): Got {req}")
             self.cmd_handler[req.cmd](req)
 
-            if req.cmd == "TERM":
+            if req.cmd == SHMCommand.TERM:
                 logger.debug(f"Worker({self.worker_id}): Termination")
                 break
+
+
+class SHMVectorLoopMixin(SHMVectorMixin):
+    def start_loop(self):
+        self.request(SHMCommand.INIT_LOOP)
+
+    def stop_loop(self):
+        self.request(SHMCommand.STOP_LOOP)
+        self.sync()
+
+
+class SHMProcLoopMixin(SHMProcMixin):
+    def __init__(self, worker_id: int, req_queue: mp.Queue, rep_queue: mp.Queue):
+        super().__init__(worker_id, req_queue, rep_queue)
+        self.cmd_handler[SHMCommand.INIT_LOOP] = self._loop_handler
 
     def _loop_handler(self, req: Request):
         """Unlike other handler, it watches if STOP_LOOP request have come."""
@@ -172,9 +169,9 @@ class SHMProcMixin(mp.Process):
         self._step_loop_once(is_first=True)
 
         while True:
-            if not self.req_queue.empty():
-                req = self.req_queue.get()
-                assert req.cmd == "STOP_LOOP"
+            if not self._req_queue.empty():
+                req = self._req_queue.get()
+                assert req.cmd == SHMCommand.STOP_LOOP
                 self._wait_to_stop()
                 break
 
@@ -182,7 +179,7 @@ class SHMProcMixin(mp.Process):
                 self._step_loop_once(is_first=False)
 
     def _wait_to_stop(self):
-        self.reply(cmd="STOP_LOOP")
+        self.reply(cmd=SHMCommand.STOP_LOOP)
 
     def _step_loop_once(self, is_first: bool):
         raise NotImplementedError

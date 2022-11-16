@@ -173,6 +173,22 @@ class AuturiVectorEnv(VectorMixin, AuturiEnv, metaclass=ABCMeta):
             new_num_workers=actor_config.num_parallel, config=config
         )
 
+        actor_env_offset = config.compute_index_for_actor("num_envs", self.actor_id)
+        for worker_id, worker in self.workers():
+            start_idx = actor_env_offset + self.num_env_serial * worker_id
+            self.set_working_env(worker_id, worker, start_idx, self.num_env_serial)
+
+    @abstractmethod
+    def set_working_env(
+        self,
+        worker_id: int,
+        worker: AuturiSerialEnv,
+        start_idx: int,
+        num_env_serial: int,
+    ) -> Any:
+        """Set working envs for all SerialEnvs."""
+        raise NotImplementedError
+
     @abstractmethod
     def poll(self) -> Any:
         """Wait until at least 'self.batch_size' environments finish their step.
