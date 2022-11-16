@@ -54,7 +54,7 @@ class SHMPolicyProc(SHMProcLoopMixin):
 
     def set_handler_for_command(self):
         self.cmd_handler[PolicyCommand.LOAD_MODEL] = self.load_model_handler
-        self.cmd_handler[PolicyCommand.SET_ENV] = self.set_env_handler
+        self.cmd_handler[PolicyCommand.SET_POLICY_ENV] = self.set_env_handler
 
     def load_model_handler(self, request: Request):
         # cannot receive model parameters via SHM for now.
@@ -73,6 +73,7 @@ class SHMPolicyProc(SHMProcLoopMixin):
         return self.policy_buffer[self.worker_id]
 
     def get_visible_buffer(self, buffer: np.ndarray):
+        assert self._env_mask is not None
         return buffer[self._env_mask]
 
     def _step_loop_once(self, is_first: bool) -> None:
@@ -87,12 +88,13 @@ class SHMPolicyProc(SHMProcLoopMixin):
             )[0]
 
             assert len(assigned_env_ids) > 0
+            logger.info(
+                self.identifier
+                + f"policy.step: given={assigned_env_ids}, env_buffer={self.env_buffer}, visible={(np.where(self.env_buffer == 30))[0]}, set fn={(np.where(self.env_buffer[self._env_mask] == 30))[0]},, mask={self._env_mask}"
+            )
 
             obs = self.get_visible_buffer(self.obs_buffer)[assigned_env_ids]
             actions, artifacts = self.policy.compute_actions(obs, n_steps=1)
-            logger.info(
-                self.identifier + f"policy.step({obs.flat[0]}) => {actions.flat[0]}"
-            )
 
             # Write actions and the artifacts
             self.get_visible_buffer(self.action_buffer)[assigned_env_ids] = actions

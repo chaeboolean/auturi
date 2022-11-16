@@ -29,27 +29,22 @@ class VectorMixin(metaclass=ABCMeta):
     def reconfigure_workers(
         self, new_num_workers: int, config: ParallelizationConfig, **kwargs
     ):
+        curr_num_workers = self.num_workers
+        for worker_id in range(curr_num_workers):
+            if worker_id < new_num_workers:
+                worker = self._workers[worker_id]
+                self._reconfigure_worker(worker_id, worker, config, **kwargs)
 
-        old_workers = self._workers
-        new_workers = OrderedDict()
-
-        for worker_id in range(new_num_workers):
-            if worker_id in old_workers:
-                worker = old_workers.pop(worker_id)
             else:
-                worker = self._create_worker(worker_id)
+                worker = self._workers.pop(worker_id)
+                self._terminate_worker(worker_id, worker)
 
+        for worker_id in range(curr_num_workers, new_num_workers):
+            worker = self._create_worker(worker_id, **kwargs)
             self._reconfigure_worker(worker_id, worker, config, **kwargs)
-            new_workers[worker_id] = worker
+            self._workers[worker_id] = worker
 
-        for worker_id in old_workers.keys():
-            worker = old_workers.pop(worker_id)
-            self._terminate_worker(worker_id, worker)
-
-        assert len(old_workers) == 0
-        assert len(new_workers) == new_num_workers
-
-        self._workers = new_workers
+        assert self.num_workers == new_num_workers
 
     @abstractmethod
     def _create_worker(self, worker_id: int) -> T:

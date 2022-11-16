@@ -28,7 +28,7 @@ class SHMVectorPolicy(AuturiVectorPolicy, SHMVectorLoopMixin):
 
         # create policy buffer
         self.__policy, self.policy_buffer, policy_attr = _create_buffer_from_sample(
-            sample_=np.array([1], dtype=np.int8), max_num=MAX_POLICY
+            sample_=1, max_num=MAX_POLICY
         )
         self.base_buffer_attr["policy"] = policy_attr
 
@@ -67,7 +67,7 @@ class SHMVectorPolicy(AuturiVectorPolicy, SHMVectorLoopMixin):
         self, worker_id: int, worker: SHMPolicyProc, config: ParallelizationConfig
     ):
         self.request(
-            PolicyCommand.SET_ENV,
+            PolicyCommand.SET_POLICY_ENV,
             worker_id=worker_id,
             data=[self._env_offset, config[self.actor_id].num_envs],
         )
@@ -90,7 +90,14 @@ class SHMVectorPolicy(AuturiVectorPolicy, SHMVectorLoopMixin):
 
     def compute_actions(self, env_ids: List[int], n_steps: int) -> object:
         while True:
-            assert np.all(self._get_env_state()[env_ids] == EnvStateEnum.QUEUED)
+            # assert np.all(self._get_env_state()[env_ids] == EnvStateEnum.QUEUED)
+
+            if not np.all(self._get_env_state()[env_ids] == EnvStateEnum.QUEUED):
+                logger.debug(
+                    self.identifier
+                    + f"Assertion False: env state= {self.env_buffer}, got id={env_ids}"
+                )
+                assert False
             ready_policies = np.where(self._get_state() == PolicyStateEnum.READY)[0]
 
             if len(ready_policies) > 0:

@@ -136,7 +136,7 @@ def create_shm_from_env(
         "action": (action, max_num_envs),
         "artifact": (action_artifacts_sample_list[0], max_num_envs),
         # indicating env_state
-        "env": (np.array([1], dtype=np.int8), max_num_envs),
+        "env": (1, max_num_envs),
     }
 
     # Create rollout sample dictionary

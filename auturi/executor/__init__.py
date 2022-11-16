@@ -2,6 +2,7 @@ from typing import Any, Callable, Dict, List
 
 from auturi.executor.environment import AuturiEnv
 from auturi.executor.ray import RayVectorActor
+from auturi.executor.shm import SHMVectorActor
 from auturi.tuner import AuturiTuner
 
 
@@ -14,6 +15,7 @@ def create_executor(
 ):
     engine_cls = {
         "ray": RayVectorActor,
+        "shm": SHMVectorActor,
     }[backend]
 
     return engine_cls(env_fns, policy_cls, policy_kwargs, tuner)
