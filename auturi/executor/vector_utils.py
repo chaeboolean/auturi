@@ -40,7 +40,7 @@ class VectorMixin(metaclass=ABCMeta):
                 self._terminate_worker(worker_id, worker)
 
         for worker_id in range(curr_num_workers, new_num_workers):
-            worker = self._create_worker(worker_id, **kwargs)
+            worker = self._create_worker(worker_id)
             self._reconfigure_worker(worker_id, worker, config, **kwargs)
             self._workers[worker_id] = worker
 

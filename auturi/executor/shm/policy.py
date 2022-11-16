@@ -33,9 +33,6 @@ class SHMVectorPolicy(AuturiVectorPolicy, SHMVectorLoopMixin):
         self.base_buffer_attr["policy"] = policy_attr
 
         self.__env, self.env_buffer = set_shm_from_attr(self.base_buffer_attr["env"])
-        logger.debug(
-            f"Env buffer shape = {self.env_buffer.shape}, polic={self.policy_buffer.shape}"
-        )
         self._env_offset = -1  # should be intialized when reconfigure
         self._env_mask = None
 
@@ -75,6 +72,7 @@ class SHMVectorPolicy(AuturiVectorPolicy, SHMVectorLoopMixin):
     def _terminate_worker(self, worker_id: int, worker: SHMPolicyProc) -> None:
         super().teardown_handler(worker_id)
         worker.join()
+        logger.info(self.identifier + f"Join worker={worker_id} pid={worker.pid}")
 
     def terminate(self):
         # self.request(EnvCommand.TERM)
@@ -92,18 +90,13 @@ class SHMVectorPolicy(AuturiVectorPolicy, SHMVectorLoopMixin):
         while True:
             # assert np.all(self._get_env_state()[env_ids] == EnvStateEnum.QUEUED)
 
-            if not np.all(self._get_env_state()[env_ids] == EnvStateEnum.QUEUED):
-                logger.debug(
-                    self.identifier
-                    + f"Assertion False: env state= {self.env_buffer}, got id={env_ids}"
-                )
-                assert False
+            assert np.all(self._get_env_state()[env_ids] == EnvStateEnum.QUEUED)
             ready_policies = np.where(self._get_state() == PolicyStateEnum.READY)[0]
 
             if len(ready_policies) > 0:
                 policy_id = int(ready_policies[0])  # pick any
 
-                logger.info(self.identifier + f"assigned {env_ids} to pol{policy_id}")
+                logger.debug(self.identifier + f"assigned {env_ids} to pol{policy_id}")
                 self._get_env_state()[env_ids] = policy_id + EnvStateEnum.POLICY_OFFSET
                 self._get_state()[policy_id] = PolicyStateEnum.ASSIGNED
                 return None

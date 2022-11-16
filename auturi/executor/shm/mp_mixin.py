@@ -1,11 +1,11 @@
 """Define Multiprocessing Mixin class that supports for SHMVectorXXX and SHMXXXProc.
 
 """
+import os
 import queue as naive_queue
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
-import numpy as np
 import torch.multiprocessing as mp
 
 from auturi.executor.shm.constant import SHMCommand
@@ -49,7 +49,9 @@ class RequestHandler:
         while not self._called_reqs.empty():
             last_req = self._called_reqs.get()
             rep = self.rep_queue.get()
-            assert rep.cmd == last_req
+            assert (
+                rep.cmd == last_req
+            ), f"{self.worker_id}): last req={last_req}, but got {rep}"
             logger.debug(f"Handler(wid={self.worker_id}): Check {rep}")
 
 
@@ -65,8 +67,13 @@ class SHMVectorMixin:
         self._request_handlers[worker_id] = req_hander
 
         p = proc_cls(**kwargs)
+        logger.info(self.identifier + f"Create worker={worker_id} pid={p.pid}")
         p.start()
         return p
+
+    @property
+    def identifier(self):
+        raise NotImplementedError
 
     def _working_ids(self, worker_id: Optional[int] = None):
         working_ids = list(self._request_handlers.keys())
@@ -114,6 +121,10 @@ class SHMProcMixin(mp.Process):
 
         super().__init__()
 
+    @property
+    def identifier(self):
+        raise NotImplementedError
+
     def _term_handler(self, req: Request):
         self.reply(req.cmd)
 
@@ -137,15 +148,15 @@ class SHMProcMixin(mp.Process):
             # req = self.queue.get()
             wait(
                 lambda: not self._req_queue.empty(),
-                f"{self.worker_id} Waitign for queue... ",
+                self.identifier + f"Waiting for queue... pid={os.getpid()}",
             )
             req = self._req_queue.get()
 
-            logger.debug(f"Worker({self.worker_id}): Got {req}")
+            logger.debug(self.identifier + f"Got {req}")
             self.cmd_handler[req.cmd](req)
 
             if req.cmd == SHMCommand.TERM:
-                logger.debug(f"Worker({self.worker_id}): Termination")
+                logger.debug(self.identifier + f"Terminate")
                 break
 
 

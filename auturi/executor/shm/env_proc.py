@@ -91,8 +91,7 @@ class SHMEnvProc(SHMProcLoopMixin):
         elif np.all(self._get_env_state() == EnvStateEnum.POLICY_DONE):
             action, artifacts_list = self.get_actions()
             obs = self.env.step(action, artifacts_list)
-            logger.debug(self.identifier + "Called env.step()")
-            logger.info(
+            logger.debug(
                 self.identifier + f"env.step({action.flat[0]}) => {obs.flat[0]}"
             )
 

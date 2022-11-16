@@ -76,6 +76,7 @@ class SHMParallelEnv(AuturiVectorEnv, SHMVectorLoopMixin):
     def _terminate_worker(self, worker_id: int, worker: SHMEnvProc) -> None:
         super().teardown_handler(worker_id)
         worker.join()
+        logger.info(self.identifier + f"Join worker={worker_id} pid={worker.pid}")
 
     def terminate(self):
         # self.request(EnvCommand.TERM)

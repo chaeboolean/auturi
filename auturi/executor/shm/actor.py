@@ -93,10 +93,7 @@ class SHMActorProc(SHMProcMixin):
         self.reply(request.cmd)
 
     def _term_handler(self, request: Request):
-        logger.debug(self.identifier + "Got Term signal....")
+        logger.info(self.identifier + "Got Term signal....")
         self.actor.vector_envs.terminate()
-        logger.debug(self.identifier + "Terminate VecEnv....")
-
         self.actor.vector_policy.terminate()
-        logger.debug(self.identifier + "Terminate VecPolicy....")
         super()._term_handler(request)
