@@ -9,7 +9,7 @@ from auturi.executor.shm.env_proc import EnvStateEnum, SHMEnvProc
 from auturi.executor.shm.mp_mixin import SHMVectorLoopMixin
 from auturi.executor.shm.util import WaitingQueue, set_shm_from_attr, wait
 from auturi.logger import get_logger
-from auturi.tuner.config import ParallelizationConfig
+from auturi.tuner import ParallelizationConfig
 
 logger = get_logger()
 

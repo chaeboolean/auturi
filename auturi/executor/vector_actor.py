@@ -3,10 +3,9 @@ from typing import Any, Callable, Dict, List, Tuple
 
 import torch.nn as nn
 
-from auturi.executor.actor import AuturiActor
 from auturi.executor.environment import AuturiEnv
 from auturi.executor.vector_utils import VectorMixin
-from auturi.tuner import ActorConfig, AuturiMetric, AuturiTuner, TunerConfig
+from auturi.tuner import AuturiTuner, AuturiMetric, ParallelizationConfig
 
 
 class AuturiVectorActor(VectorMixin, metaclass=ABCMeta):
@@ -57,13 +56,11 @@ class AuturiVectorActor(VectorMixin, metaclass=ABCMeta):
         next_config = self.tuner.next()
         self.reconfigure(next_config, model)
 
-        rollouts, metric = self._run(num_collect)
+        rollouts, metric = self._run()
 
         # Give result to tuner.
         self.tuner.feedback(metric)
         return rollouts, metric
-
-        return self._run()
 
     @abstractmethod
     def _run(self) -> Tuple[Dict[str, Any], AuturiMetric]:

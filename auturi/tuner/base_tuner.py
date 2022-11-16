@@ -50,6 +50,7 @@ class AuturiTuner(metaclass=ABCMeta):
 
         self.min_num_env = min_num_env
         self.max_num_env = max_num_env
+        self.num_collect = num_collect
         self.num_iterate = num_iterate
 
         self.recorder = MetricRecorder(num_iterate)

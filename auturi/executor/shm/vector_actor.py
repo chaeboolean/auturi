@@ -10,8 +10,7 @@ from auturi.executor.shm.mp_mixin import SHMVectorMixin
 from auturi.executor.shm.util import create_shm_from_env
 from auturi.executor.vector_actor import AuturiVectorActor
 from auturi.logger import get_logger
-from auturi.tuner import AuturiTuner
-from auturi.tuner.config import AuturiMetric, ParallelizationConfig
+from auturi.tuner import AuturiTuner, AuturiMetric, ParallelizationConfig
 
 logger = get_logger()
 

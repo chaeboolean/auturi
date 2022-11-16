@@ -1,7 +1,3 @@
-from typing import List
-
-import numpy as np
-
 from auturi.executor.actor import AuturiActor
 from auturi.executor.shm.constant import ActorCommand
 from auturi.executor.shm.environment import SHMParallelEnv
