@@ -11,7 +11,7 @@ def create_tuner_with_config(num_envs: int, config: ParallelizationConfig):
 
     class _MockTuner(AuturiTuner):
         def __init__(self):
-            super().__init__(num_envs, num_envs)
+            super().__init__(num_envs, num_envs, config.num_collect)
 
         def next(self):
             return config

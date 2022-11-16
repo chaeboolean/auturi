@@ -49,7 +49,6 @@ class ActorConfig:
 
         # At least one SerialEnv should be executed.
 
-        print(self)
         assert self.num_collect >= num_env_serial
 
 
@@ -63,13 +62,6 @@ class ParallelizationConfig:
     """
 
     actor_map: frozendict
-
-    def __post_init__(self):
-        """Validate configurations."""
-        ctr = 0
-        for _, actor_config in self.actor_map.items():
-            ctr += actor_config.num_collect
-        assert ctr == self.num_collect
 
     @classmethod
     def create(cls, actor_configs: List[ActorConfig]):
@@ -114,7 +106,7 @@ class ParallelizationConfig:
 
     def compute_index_for_actor(self, name: str, actor_id: int) -> int:
         """Return the global index of Env, SerialEnv, or Policy with given actor_id."""
-        assert name in ["num_envs", "num_parallel", "num_policy"]
+        assert name in ["num_envs", "num_parallel", "num_policy", "num_collect"]
         start_idx = 0
         for idx, actor_config in self.actor_map.items():
             if idx == actor_id:
