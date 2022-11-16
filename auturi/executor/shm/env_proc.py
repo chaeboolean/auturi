@@ -1,25 +1,12 @@
 import numpy as np
 
 from auturi.executor.environment import AuturiSerialEnv
-from auturi.executor.shm.constant import EnvCommand
+from auturi.executor.shm.constant import EnvCommand, EnvStateEnum
 from auturi.executor.shm.mp_mixin import Request, SHMProcLoopMixin
 from auturi.executor.shm.util import set_shm_from_attr, wait
 from auturi.logger import get_logger
 
 logger = get_logger()
-
-
-class EnvStateEnum:
-    """Indicates single simulator state.
-    Initialized to STOPPED.
-
-    """
-
-    STOPPED = 0
-    STEP_DONE = 22  # Newly arrived requests
-    QUEUED = 23  # Inside Server side waiting queue
-    POLICY_DONE = 24  # Processed requests
-    POLICY_OFFSET = 30  # offset => ASSIGNED
 
 
 class SHMEnvProc(SHMProcLoopMixin):
@@ -73,11 +60,11 @@ class SHMEnvProc(SHMProcLoopMixin):
         self.reply(request.cmd)
 
     def seed_handler(self, request: Request):
-        self.env.seed(int(request.data[0]))
+        self.env.seed(request.data[0])
         self.reply(request.cmd)
 
     def set_visible_env_handler(self, request: Request):
-        self.env.set_working_env(int(request.data[0]), int(request.data[1]))
+        self.env.set_working_env(request.data[0], request.data[1])
         self.reply(request.cmd)
 
     def aggregate_handler(self, request: Request):
@@ -95,7 +82,7 @@ class SHMEnvProc(SHMProcLoopMixin):
         if is_first:
             assert np.all(
                 self._get_env_state() == EnvStateEnum.STOPPED
-            ), f"curr={self._get_single_env_state()}"
+            ), f"curr={self._get_env_state()}"
 
             logger.debug(self.identifier + "Entered the loop.")
 

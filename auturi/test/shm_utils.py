@@ -1,5 +1,4 @@
-# from auturi.executor.shm import SHMActor, SHMParallelEnv, create_shm_from_env
-from auturi.executor.shm import SHMParallelEnv, create_shm_from_env
+from auturi.executor.shm import SHMActor, SHMParallelEnv, create_shm_from_env
 
 
 class SHMTester:
@@ -67,37 +66,37 @@ class SHMParallelEnvTester(SHMParallelEnv, SHMTester):
         self._buffer_clean_up()
 
 
-# class SHMActorTester(SHMActor, SHMTester):
-#     """Tester class to test SHMActor without SHMVectorActor."""
+class SHMActorTester(SHMActor, SHMTester):
+    """Tester class to test SHMActor without SHMVectorActor."""
 
-#     def __init__(
-#         self,
-#         actor_id,
-#         env_fns,
-#         policy_cls,
-#         policy_kwargs,
-#         base_buffer_attr,
-#         rollout_buffer_attr,
-#         base_buffers,
-#         rollout_buffers,
-#     ):
+    def __init__(
+        self,
+        actor_id,
+        env_fns,
+        policy_cls,
+        policy_kwargs,
+        base_buffer_attr,
+        rollout_buffer_attr,
+        base_buffers,
+        rollout_buffers,
+    ):
 
-#         self.base_buffers, self.rollout_buffers = base_buffers, rollout_buffers
-#         self.num_collect = -1  # used for aggregate rollouts.
+        self.base_buffers, self.rollout_buffers = base_buffers, rollout_buffers
+        self.num_collect = -1  # used for aggregate rollouts.
 
-#         super().__init__(
-#             actor_id,
-#             env_fns,
-#             policy_cls,
-#             policy_kwargs,
-#             base_buffer_attr,
-#             rollout_buffer_attr,
-#         )
+        super().__init__(
+            actor_id,
+            env_fns,
+            policy_cls,
+            policy_kwargs,
+            base_buffer_attr,
+            rollout_buffer_attr,
+        )
 
-#     def run(self):
-#         _, metric = super().run()
-#         return self._aggregate_from_rollout_buffer(), metric
+    def run(self):
+        _, metric = super().run()
+        return self._aggregate_from_rollout_buffer(), metric
 
-#     def terminate(self):
-#         super().terminate()
-#         self._buffer_clean_up()
+    def terminate(self):
+        super().terminate()
+        self._buffer_clean_up()
