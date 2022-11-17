@@ -5,6 +5,7 @@ import random
 from collections import deque
 from itertools import zip_longest
 from typing import Dict, Iterable, List, Optional, Tuple, Union
+from functools import partial
 
 import gym
 import numpy as np
@@ -86,7 +87,9 @@ def get_schedule_fn(value_schedule: Union[Schedule, float, int]) -> Schedule:
     # create a constant function
     if isinstance(value_schedule, (float, int)):
         # Cast to float to avoid errors
-        value_schedule = constant_fn(float(value_schedule))
+        # value_schedule = constant_fn(float(value_schedule))
+        value_schedule = partial(constant_fn, float(value_schedule))
+
     else:
         assert callable(value_schedule)
     return value_schedule
@@ -116,7 +119,7 @@ def get_linear_fn(start: float, end: float, end_fraction: float) -> Schedule:
     return func
 
 
-def constant_fn(val: float) -> Schedule:
+def constant_fn(val: float, dumb=None) -> Schedule:
     """
     Create a function that returns a constant
     It is useful for learning rate schedule (to avoid code duplication)
@@ -125,11 +128,11 @@ def constant_fn(val: float) -> Schedule:
     :return: Constant schedule function.
     """
 
-    def func(_):
-        return val
+    # def func(_):
+    #     return val
 
-    return func
-
+    # return func
+    return val
 
 def get_device(device: Union[th.device, str] = "auto") -> th.device:
     """

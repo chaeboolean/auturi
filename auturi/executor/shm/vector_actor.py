@@ -10,7 +10,7 @@ from auturi.executor.shm.mp_mixin import SHMVectorMixin
 from auturi.executor.shm.util import create_shm_from_env
 from auturi.executor.vector_actor import AuturiVectorActor
 from auturi.logger import get_logger
-from auturi.tuner import AuturiTuner, AuturiMetric, ParallelizationConfig
+from auturi.tuner import AuturiMetric, AuturiTuner, ParallelizationConfig
 
 logger = get_logger()
 
@@ -31,6 +31,15 @@ class SHMVectorActor(AuturiVectorActor, SHMVectorMixin):
             self.rollout_buffers,
             self.rollout_buffer_attr,
         ) = create_shm_from_env(env_fns[0], len(env_fns), self.rollout_size)
+
+        logger.debug("==================================")
+        for key, val in self.base_buffers.items():
+            logger.debug(f"{key}: shape={val[1].shape}")
+
+        for key, val in self.rollout_buffers.items():
+            logger.debug(f"Rollout_{key}: shape={val[1].shape}")
+
+        logger.debug("==================================\n\n")
 
         self.env_fns = env_fns
         self.policy_cls = policy_cls
@@ -111,6 +120,7 @@ class SHMVectorActor(AuturiVectorActor, SHMVectorMixin):
     def _aggregate_rollouts(self, num_collect: int):
         ret_dict = dict()
         for key, tuple_ in self.rollout_buffers.items():
-            ret_dict[key] = tuple_[1][:num_collect, :]
+            # ret_dict[key] = tuple_[1][:num_collect, :]
+            ret_dict[key] = tuple_[1]
 
         return ret_dict

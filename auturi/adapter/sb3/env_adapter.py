@@ -1,8 +1,13 @@
+import time
+
 import gym
 import numpy as np
 
 from auturi.executor.environment import AuturiEnv
-import time
+from auturi.logger import get_logger
+
+logger = get_logger()
+
 
 class SB3LocalRolloutBuffer:
     def __init__(self):
@@ -61,7 +66,8 @@ class SB3LocalRolloutBuffer:
 class SB3EnvAdapter(AuturiEnv):
     def __init__(self, env_fn):
         self.env = env_fn()
-        self.setup_with_dummy(self.env)
+        self.setup_dummy_env(self.env)
+        self.artifacts_samples = [np.array([1.1, 1.4])]
 
         self._last_obs = None
         self._last_episode_starts = False
@@ -84,6 +90,8 @@ class SB3EnvAdapter(AuturiEnv):
         # process action-related values.
         if isinstance(self.action_space, gym.spaces.Discrete):
             # Reshape in case of discrete action
+            if not isinstance(actions, np.ndarray):
+                actions = np.array([actions])
             actions = actions.reshape(-1)
 
         # Rescale and perform action
@@ -105,7 +113,7 @@ class SB3EnvAdapter(AuturiEnv):
         ):
             terminal_obs = info["terminal_observation"]
 
-        values, log_probs = action_artifacts
+        values, log_probs = action_artifacts[0]
 
         self.local_buffer.add(
             self._last_obs,
@@ -121,16 +129,16 @@ class SB3EnvAdapter(AuturiEnv):
         self._last_episode_starts = done
 
         end_time = time.perf_counter()
-        self.time_ms.append(end_time-start_time)
+        self.time_ms.append(end_time - start_time)
 
         return new_obs
 
     def aggregate_rollouts(self):
-        if len(self.time_ms) > 0:
-            with open("env.txt", "w"):
-                print(self.time_ms)
-            self.time_ms.clear()
+        # if len(self.time_ms) > 0:
+        #     with open("env.txt", "w"):
+        #         print(self.time_ms)
 
+        self.time_ms.clear()
         return self.local_buffer.get_local_rollouts()
 
     def terminate(self):

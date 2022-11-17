@@ -2,6 +2,7 @@ import time
 from multiprocessing import shared_memory as shm
 from typing import Any, Callable, Dict, Tuple
 
+import gym
 import numpy as np
 
 from auturi.executor.environment import AuturiEnv
@@ -130,10 +131,14 @@ def create_shm_from_env(
     dummy_env.step(action, action_artifacts_sample_list)
     rollouts = dummy_env.aggregate_rollouts()
 
+    sample_action = action
+    if isinstance(dummy_env.action_space, gym.spaces.Discrete):
+        sample_action = np.array([action])
+
     # Create basic buffers
     buffer_sample_dict = {
         "obs": (obs, max_num_envs),
-        "action": (action, max_num_envs),
+        "action": (sample_action, max_num_envs),
         "artifact": (action_artifacts_sample_list[0], max_num_envs),
         # indicating env_state
         "env": (1, max_num_envs),

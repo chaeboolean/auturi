@@ -5,7 +5,7 @@ import torch.nn as nn
 
 from auturi.executor.environment import AuturiEnv
 from auturi.executor.vector_utils import VectorMixin
-from auturi.tuner import AuturiTuner, AuturiMetric, ParallelizationConfig
+from auturi.tuner import AuturiMetric, AuturiTuner, ParallelizationConfig
 
 
 class AuturiVectorActor(VectorMixin, metaclass=ABCMeta):

@@ -1,11 +1,15 @@
+import time
 from typing import Callable
 
 import gym
-import time
+import numpy as np
 import torch as th
 from stable_baselines3.common.utils import obs_as_tensor
 
 from auturi.executor.policy import AuturiPolicy
+from auturi.logger import get_logger
+
+logger = get_logger()
 
 
 def _to_cpu_numpy(tensor):
@@ -33,21 +37,22 @@ class SB3PolicyAdapter(AuturiPolicy):
         self.use_sde = use_sde
         self.sde_sample_freq = sde_sample_freq
         self.device = "cpu"
-        
-        self.time_ms = []
 
+        self.time_ms = []
 
     # Called at the beginning of collection loop
     def load_model(self, model, device="cpu"):
-        if len(self.time_ms) > 0:
-            with open("policy.txt", "w") as f:
-                print(self.time_ms)
-            self.time_ms.clear()
-        
-        
+        # if len(self.time_ms) > 0:
+        #     with open("policy.txt", "w") as f:
+        #         print(self.time_ms)
+        self.time_ms.clear()
+        logger.debug(f"PolicyAdapter: Load policy start....")
+
         self.policy_model = self.policy_model_cls.load(self.model_path, device=device)
         self.policy_model.set_training_mode(False)
         self.device = device
+
+        logger.debug(f"PolicyAdapter: Load policy finish...")
 
     def _to_sample_noise(self, n_steps):
         return (
@@ -70,12 +75,12 @@ class SB3PolicyAdapter(AuturiPolicy):
             actions, values, log_probs = self.policy_model(obs_tensor)
 
         ret = _to_cpu_numpy(actions), [
-            _to_cpu_numpy(values).flatten(),
-            _to_cpu_numpy(log_probs),
+            np.array([_to_cpu_numpy(values).flatten()[0], _to_cpu_numpy(log_probs)[0]])
         ]
         end_time = time.perf_counter()
-        self.time_ms.append(end_time-start_time)
-        
-        return ret
-        
+        self.time_ms.append(end_time - start_time)
 
+        return ret
+
+    def terminate(self):
+        pass

@@ -1,4 +1,5 @@
 import functools
+from functools import partial
 
 from stable_baselines3.common.on_policy_algorithm import OnPolicyAlgorithm
 
@@ -16,10 +17,7 @@ def _collect_rollouts_auturi(sb3_algo, env, callback, rollout_buffer, n_rollout_
     sb3_algo.policy.save(sb3_algo._save_model_path)
 
     num_envs = len(sb3_algo.env_fns)
-    num_collect = n_rollout_steps * num_envs
-    agg_rollouts, metric = sb3_algo._auturi_executor.run(
-        model=None, num_collect=num_collect
-    )
+    agg_rollouts, metric = sb3_algo._auturi_executor.run(model=None)
     print("**** Rollout ends... = ", agg_rollouts["terminal_obs"].shape)
 
     process_buffer(agg_rollouts, sb3_algo.policy, sb3_algo.gamma)
@@ -30,6 +28,10 @@ def _collect_rollouts_auturi(sb3_algo, env, callback, rollout_buffer, n_rollout_
     return last_obs, last_dones
 
 
+def _create_auturi_env(env_fn, dumb=None):
+    return SB3EnvAdapter(env_fn)
+
+
 def wrap_sb3_OnPolicyAlgorithm(
     sb3_algo: OnPolicyAlgorithm, tuner, backend: str = "ray"
 ):
@@ -37,7 +39,9 @@ def wrap_sb3_OnPolicyAlgorithm(
     assert hasattr(sb3_algo, "env_fns")
     assert hasattr(sb3_algo, "policy_class")
 
-    auturi_env_fns = [lambda: SB3EnvAdapter(env_fn) for env_fn in sb3_algo.env_fns]
+    auturi_env_fns = [
+        partial(_create_auturi_env, env_fn) for env_fn in sb3_algo.env_fns
+    ]
     policy_kwargs = {
         "observation_space": sb3_algo.observation_space,
         "action_space": sb3_algo.action_space,

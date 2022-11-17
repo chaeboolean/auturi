@@ -3,6 +3,7 @@ import glob
 import importlib
 import os
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from functools import partial
 
 import gym
 import stable_baselines3 as sb3  # noqa: F401
@@ -103,7 +104,7 @@ def get_wrapper_class(hyperparams: Dict[str, Any], key: str = "env_wrapper") -> 
             wrapper_class = getattr(wrapper_module, get_class_name(wrapper_name))
             wrapper_classes.append(wrapper_class)
             wrapper_kwargs.append(kwargs)
-
+        
         def wrap_env(env: gym.Env) -> gym.Env:
             """
             :param env:
@@ -113,9 +114,16 @@ def get_wrapper_class(hyperparams: Dict[str, Any], key: str = "env_wrapper") -> 
                 env = wrapper_class(env, **kwargs)
             return env
 
-        return wrap_env
+        return partial(_wrap_env, wrapper_classes, wrapper_kwargs)
     else:
         return None
+
+
+def _wrap_env(wrapper_classes, wrapper_kwargs, env: gym.Env)-> gym.Env:
+    for wrapper_class, kwargs in zip(wrapper_classes, wrapper_kwargs):
+        env = wrapper_class(env, **kwargs)
+    return env
+    
 
 
 def get_callback_list(hyperparams: Dict[str, Any]) -> List[BaseCallback]:
@@ -256,6 +264,11 @@ def create_test_env(
     return env
 
 
+def _linear_schedule_func(initial_value, progress_remaining: float) -> float:
+    return progress_remaining * initial_value
+
+
+
 def linear_schedule(initial_value: Union[float, str]) -> Callable[[float], float]:
     """
     Linear learning rate schedule.
@@ -274,7 +287,7 @@ def linear_schedule(initial_value: Union[float, str]) -> Callable[[float], float
         """
         return progress_remaining * initial_value
 
-    return func
+    return partial(_linear_schedule_func, initial_value)
 
 
 def get_trained_models(log_folder: str) -> Dict[str, Tuple[str, str]]:

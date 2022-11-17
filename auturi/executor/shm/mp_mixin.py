@@ -6,13 +6,13 @@ import queue as naive_queue
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
-import torch.multiprocessing as mp
+import torch.multiprocessing as _mp
+mp = _mp.get_context('spawn')
 
 from auturi.executor.shm.constant import SHMCommand
 from auturi.executor.shm.util import wait
 from auturi.logger import get_logger
 
-# mp = _mp.get_context('spawn')
 
 
 logger = get_logger()
