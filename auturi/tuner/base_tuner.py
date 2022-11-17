@@ -69,7 +69,9 @@ class AuturiTuner(metaclass=ABCMeta):
         try:
             mean_metric = self.recorder.get(self.curr_config, "mean")
             self._update_tuner(self.curr_config, mean_metric)
-            self.curr_config = self._generate_next()
+            new_config = self._generate_next()
+            self._validate(new_config)
+            self.curr_config = new_config
 
         except AuturiNotEnoughSampleError as e:
             pass
@@ -87,3 +89,8 @@ class AuturiTuner(metaclass=ABCMeta):
     ) -> None:
         """Update Tuner with (config, mean_metric) tuple."""
         pass
+
+    def _validate(self, config: ParallelizationConfig) -> bool:
+        assert config.num_envs >= self.min_num_env
+        assert config.num_envs <= self.max_num_env
+        assert config.num_collect == self.num_collect

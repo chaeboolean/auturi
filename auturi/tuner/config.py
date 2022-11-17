@@ -1,6 +1,6 @@
 """Typing Definition for Auturi Tuner."""
 from dataclasses import dataclass
-from typing import Callable, List, Optional
+from typing import List
 
 from frozendict import frozendict
 
@@ -116,28 +116,3 @@ class ParallelizationConfig:
             start_idx += getattr(actor_config, name)
 
         raise IndexError(f"Actor id {actor_id} does not exist.")
-
-    def validate(
-        self,
-        min_num_envs: int,
-        max_num_envs: int,
-        max_num_policy: int = 1000,
-        validator: Optional[Callable[[ActorConfig], bool]] = None,
-    ):
-        """Validate TunerConfig.
-
-        Args:
-            min_num_envs (int): minimum number of environments.
-            max_num_envs (int): maximum number of environments.
-            max_num_policy (int, optional): maximum number of policies.
-            validator (Callable[[ActorConfig], bool]): Additional user-defined function.
-        """
-
-        assert self.num_envs >= min_num_envs and self.num_envs <= max_num_envs
-        assert self.num_policy <= max_num_policy
-
-        if validator is None:
-            validator = lambda x: True
-
-        for _, actor_config in self.actor_map.items():
-            assert validator(actor_config)

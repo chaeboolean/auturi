@@ -19,7 +19,7 @@ def _configs_to_list(tuner, num=None):
 
 
 def test_tuner_next_feedback_alternative():
-    tuner = GridSearchTuner(2, 2, 1, num_iterate=1000)
+    tuner = GridSearchTuner(2, 2, 1, max_policy_num=1, num_iterate=1000)
 
     tuner.next()
 
@@ -39,7 +39,7 @@ def test_tuner_next_feedback_alternative():
 
 
 def test_grid_search_tuner_record():
-    tuner = GridSearchTuner(2, 2, 1, num_iterate=2)
+    tuner = GridSearchTuner(2, 2, 1, max_policy_num=1, num_iterate=2)
 
     conf1 = tuner.next()
     tuner.feedback(AuturiMetric(3, 1))
@@ -60,13 +60,13 @@ def test_grid_search_tuner_record():
 
 
 def test_tuner_iterate():
-    tuner = GridSearchTuner(2, 2, 1, num_iterate=2)
+    tuner = GridSearchTuner(2, 2, 1024, 1, num_iterate=2)
     configs = _configs_to_list(tuner, num=4)
     assert configs[0] == configs[1]
     assert configs[2] == configs[3]
     assert configs[0] != configs[2]
 
-    tuner = GridSearchTuner(32, 32, 32, num_iterate=5)
+    tuner = GridSearchTuner(32, 32, 1024, 32, num_iterate=5)
     configs = _configs_to_list(tuner, num=15)
     assert len(set(configs)) == 3
     assert configs[0] == configs[4]
@@ -74,34 +74,44 @@ def test_tuner_iterate():
 
 
 def test_grid_search_single_env():
-    tuner = GridSearchTuner(1, 1, 1, num_iterate=1)
+    tuner = GridSearchTuner(1, 1, 100, 1, num_iterate=1)
     configs = _configs_to_list(tuner, num=None)
     assert len(configs) == 2
 
     tuner = GridSearchTuner(
-        1, 1, 1, num_iterate=1, validator=lambda x: x.policy_device == "cpu"
+        1, 1, 100, 1, num_iterate=1, validator=lambda x: x.policy_device == "cpu"
     )
     configs = _configs_to_list(tuner, num=None)
     assert len(configs) == 1
 
 
-# def test_grid_search():
-#     tuner = GridSearchTuner(4, 4, 4, num_iterate=1)
-#     configs = _configs_to_list(tuner, num=None)
+def test_grid_search():
+    tuner = GridSearchTuner(4, 4, num_collect=64, max_policy_num=4, num_iterate=1)
+    configs = _configs_to_list(tuner, num=None)
 
-#     assert (
-#         ParallelizationConfig.create([ActorConfig(num_envs=4, num_parallel=4, batch_size=2, num_collect=100)])
-#         in configs
-#     )
-#     assert (
-#         ParallelizationConfig.create([ActorConfig(num_envs=4, num_parallel=4, batch_size=4, num_collect=100)])
-#         in configs
-#     )
-#     assert (
-#         ParallelizationConfig.create([ActorConfig(num_envs=4, num_parallel=4, num_policy=4, num_collect=100)])
-#         in configs
-#     )
+    assert (
+        ParallelizationConfig.create(
+            [ActorConfig(num_envs=4, num_parallel=4, batch_size=2, num_collect=64)]
+        )
+        in configs
+    )
+    assert (
+        ParallelizationConfig.create(
+            [ActorConfig(num_envs=4, num_parallel=4, batch_size=4, num_collect=64)]
+        )
+        in configs
+    )
+    assert (
+        ParallelizationConfig.create(
+            [ActorConfig(num_envs=4, num_parallel=4, num_policy=4, num_collect=64)]
+        )
+        in configs
+    )
 
-#     assert ParallelizationConfig.create([ActorConfig(num_collect=100)] * 4) in configs
-
-#     assert ParallelizationConfig.create([ActorConfig(num_envs=2, num_parallel=2, num_policy=2, num_collect=100)] * 2) in configs
+    assert ParallelizationConfig.create([ActorConfig(num_collect=16)] * 4) in configs
+    assert (
+        ParallelizationConfig.create(
+            [ActorConfig(num_envs=2, num_parallel=2, num_policy=2, num_collect=32)] * 2
+        )
+        in configs
+    )

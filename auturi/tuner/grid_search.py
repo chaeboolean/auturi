@@ -19,14 +19,19 @@ class GridSearchTuner(AuturiTuner):
         self,
         min_num_env: int,
         max_num_env: int,
+        num_collect: int,
         max_policy_num: int,
         num_iterate: int = 10,
         validator: Optional[Callable[[ActorConfig], bool]] = None,
     ):
-        self.generator = naive_grid_generator(min_num_env, max_policy_num, validator)
+
+        validator = (lambda _: True) if validator is None else validator
+        self.generator = naive_grid_generator(
+            min_num_env, max_policy_num, num_collect, validator
+        )
         self.tuning_results = dict()  # TODO: Write to file the result at the end.
 
-        super().__init__(min_num_env, max_num_env, num_iterate)
+        super().__init__(min_num_env, max_num_env, num_collect, num_iterate)
 
     def _generate_next(self):
         return next(self.generator)
@@ -40,24 +45,25 @@ class GridSearchTuner(AuturiTuner):
         print("=" * 20)
 
 
-def naive_grid_generator(num_envs, num_max_policy, validator):
+def naive_grid_generator(num_envs, num_max_policy, total_num_collect, validator):
     for num_actors in _iter_to_max(max_num=min(num_envs, num_max_policy), mode_="two"):
         num_env_per_actor = num_envs // num_actors
         num_policy_per_actor = num_max_policy // num_actors
+        num_collect_per_actor = total_num_collect // num_actors
 
-        for actor_config in _possible_actors(num_env_per_actor, num_policy_per_actor):
+        for actor_config in _possible_actors(
+            num_env_per_actor, num_policy_per_actor, num_collect=num_collect_per_actor
+        ):
             try:
+                assert validator(actor_config)
                 tuner_config = ParallelizationConfig.create([actor_config] * num_actors)
-                tuner_config.validate(
-                    num_envs, num_envs, num_max_policy, validator=validator
-                )
                 yield tuner_config
 
             except AssertionError:
                 continue
 
 
-def _possible_actors(num_envs, num_max_policy):
+def _possible_actors(num_envs, num_max_policy, num_collect):
     for num_policy in _iter_to_max(max_num=num_max_policy):
         for num_parallel in _iter_to_max(max_num=num_envs, mode_="two"):
             for batch_size in _iter_to_max(max_num=num_envs, mode_="two"):
@@ -69,6 +75,7 @@ def _possible_actors(num_envs, num_max_policy):
                             num_parallel=num_parallel,
                             batch_size=batch_size,
                             policy_device=device,
+                            num_collect=num_collect,
                         )
 
                     except AssertionError:
