@@ -5,8 +5,6 @@ from rl_zoo3.exp_manager import ExperimentManager
 
 from auturi.adapter.sb3 import wrap_sb3_OnPolicyAlgorithm
 from auturi.tuner import ActorConfig, ParallelizationConfig, create_tuner_with_config
-from auturi.tuner.grid_search import GridSearchTuner
-
 import ray
 import time
 
@@ -37,19 +35,35 @@ def get_config(args, architecture, device="cpu"):
     else:
         raise NotImplementedError
 
+
+def print_result(args, collect_times):
+    collect_times = sorted(collect_times)
+    name = args.architecture
+    if name == "rllib":
+        name += f"(actors={args.num_actors})"
+    
+    if args.run_auturi:
+        name = f"Auturi[{name}]"
+    
+    
+    print(f"\n\n{name}: env={args.env}, n_envs={args.num_collect}, num_collect={args.num_collect}")
+    print(collect_times)
+    
+
+
 @ray.remote
 class RayActor:
     def __init__(self, args):
         self._init = False
         num_actors = args.num_actors
         
-        n_envs = args.num_envs // num_actors
-        n_steps = args.num_collect // num_actors // n_envs
+        n_envs_per_actor = args.num_envs // num_actors
+        n_steps_per_actor = args.num_collect // num_actors // n_envs_per_actor
         
-        self.exp_manager, self.model = \
-            create_sb3_algorithm(args, n_envs, n_steps, 1, "dummy")
+        self.exp_manager, self.model = create_sb3_algorithm(args, n_envs_per_actor, n_steps_per_actor, 1, "dummy")
 
         self._init = True
+ 
     def initialized(self):
         while True:
             if self._init:
@@ -57,12 +71,8 @@ class RayActor:
     
     def run(self):
         self.exp_manager.learn(self.model)
-        assert len(self.model.collect_time) == 1
-        t = self.model.collect_time[0]
-        self.model.collect_time.clear()
-        return t
+        return self.model.rollout_buffer
         
-
 
 def run_rllib(args):
     actors = dict()
@@ -94,7 +104,6 @@ def run_rllib(args):
     return times
 
 
-
 def create_sb3_algorithm(args, num_envs, n_steps, num_iteration, vec_cls="dummy"):
     exp_manager = ExperimentManager(
         args=args,
@@ -105,19 +114,16 @@ def create_sb3_algorithm(args, num_envs, n_steps, num_iteration, vec_cls="dummy"
         device="cpu",
         verbose=0,
     )
-    
 
-    exp_manager.auturi_num_envs = num_envs
-    model, _ = exp_manager.setup_experiment()
-
-    assert model.env.num_envs == num_envs, f"model has {model.env.num_envs}"
-
+    # _wrap = create_envs(exp_manager, 3)
     _wrap = functools.partial(exp_manager.create_envs, 1)
-    model.env_fns = [_wrap for _ in range(num_envs)]
+    
+    model, _ = exp_manager.setup_experiment(num_envs, n_steps)
+    exp_manager.n_envs = num_envs
+    model.env_fns = [_wrap for _ in range(exp_manager.n_envs)]
 
     model._auturi_iteration = num_iteration
     model._auturi_train_skip = True
-    model.n_steps = n_steps
 
     return exp_manager, model
 
@@ -125,33 +131,33 @@ def create_sb3_algorithm(args, num_envs, n_steps, num_iteration, vec_cls="dummy"
 def run(args):
     print(args)
     # create ExperimentManager with minimum argument.
-    num_iteration = args.num_iteration
-
-    n_envs = args.num_envs
-    num_collect = args.num_collect
 
     if args.run_auturi:
-        exp_manager, model = create_sb3_algorithm(args, n_envs, num_collect, num_iteration, "dummy")
-        auturi_config = get_config(args, architecture=args.running_mode)
+        num_envs = args.num_envs
+        n_steps = args.num_collect // args.num_envs
+        exp_manager, model = create_sb3_algorithm(args, num_envs, n_steps, args.num_iteration, "dummy")
         tuner = create_tuner_with_config(
-            n_envs, ParallelizationConfig.create([auturi_config])
+            args.num_envs, get_config(args, args.architecture)
         )
         wrap_sb3_OnPolicyAlgorithm(model, tuner=tuner, backend="shm")
-        
+
         exp_manager.learn(model)
+        print_result(args, model.collect_time)
+
         model._auturi_executor.terminate()
 
 
-    if args.running_mode in ["dummy", "subproc"]:
-        n_steps = num_collect // n_envs
-        exp_manager, model = create_sb3_algorithm(args, n_envs, n_steps, num_iteration, args.running_mode)
+    elif args.architecture in ["dummy", "subproc"]:
+        num_envs = args.num_envs
+        n_steps = args.num_collect // args.num_envs
+        exp_manager, model = create_sb3_algorithm(args, num_envs, n_steps, args.num_iteration, args.architecture)
         exp_manager.learn(model)
-        print(f"SB3 {args.running_mode} (env={args.env}). Collect time: {model.collect_time}")    
+        print_result(args, model.collect_time)
+        
 
-
-    elif args.running_mode == "rllib":
+    elif args.architecture == "rllib":
         collect_times = run_rllib(args)
-        print(f"RLLib (actors={args.num_actors}) (env={args.env}). Collect time: {collect_times}")
+        print_result(args, collect_times)
 
     else:
         raise NotImplementedError    
@@ -160,28 +166,30 @@ def run(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--running-mode",
+        "--architecture",
         type=str,
-        default="auturi",
+        default="subproc",
         choices=["dummy", "subproc", "rllib"],
     )
     parser.add_argument("--env", type=str, default="CartPole-v1", help="environment ID")
+
     parser.add_argument(
-        "--run-auturi", action="store_true", help="skip backprop stage."
+        "--run-auturi", action="store_true", help="Run with AuturiExecutor."
     )
     parser.add_argument(
-        "--num-envs", type=int, default=4, help="number of trials for each config."
-    )
-    parser.add_argument(
-        "--num-collect", type=int, default=4, help="number of trials for each config."
+        "--num-envs", type=int, default=4, help="number of environments."
     )
 
     parser.add_argument(
-        "--num-iteration", type=int, default=3, help="number of trials for each config."
+        "--num-collect", type=int, default=4, help="number of trajectories to collect."
     )
 
     parser.add_argument(
-        "--num-actors", type=int, default=1, help="number of trials for each config."
+        "--num-actors", type=int, default=2, help="number of actors in RLlib architecture."
+    )
+
+    parser.add_argument(
+        "--num-iteration", type=int, default=5, help="number of trials for each config."
     )
 
     args = parser.parse_args()
