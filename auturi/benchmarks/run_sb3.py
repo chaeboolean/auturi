@@ -1,7 +1,6 @@
 import argparse
 import functools
 
-import numpy as np
 from rl_zoo3.exp_manager import ExperimentManager
 
 from auturi.adapter.sb3 import wrap_sb3_OnPolicyAlgorithm
@@ -59,8 +58,8 @@ def run(args):
         except StopIteration:
             print("search finish....")
             print(tuner.tuning_results)
-            exp_manager._auturi_executor.terminate()
-            exit(0)
+            model._auturi_executor.terminate()
+            return
 
     if args.running_mode == "auturi":
 

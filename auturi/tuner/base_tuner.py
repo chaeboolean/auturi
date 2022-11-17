@@ -67,7 +67,7 @@ class AuturiTuner(metaclass=ABCMeta):
         """Record the performance metric of last config."""
         self.recorder.add(self.curr_config, metric)
         try:
-            mean_metric = self.recorder.get(self.curr_config, "mean")
+            mean_metric = self.recorder.get(self.curr_config, "median")
             self._update_tuner(self.curr_config, mean_metric)
             new_config = self._generate_next()
             self._validate(new_config)
