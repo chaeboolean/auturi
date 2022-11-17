@@ -192,6 +192,7 @@ class ExperimentManager:
         # Create env to have access to action space for action noise
         n_envs = 1 if self.algo == "ars" or self.optimize_hyperparameters else self.n_envs
         
+        n_envs = getattr(self, "auturi_num_envs", n_envs)
         env = self.create_envs(n_envs, no_log=True)
         self._hyperparams = self._preprocess_action_noise(hyperparams, saved_hyperparams, env)
 

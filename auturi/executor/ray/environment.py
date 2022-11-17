@@ -48,10 +48,12 @@ class RayParallelEnv(AuturiVectorEnv):
     def _reconfigure_worker(
         self, worker_id: int, worker: RaySerialEnv, config: ParallelizationConfig
     ):
-        actor_env_offset = config.compute_index_for_actor("num_envs", self.actor_id)
-        start_idx = actor_env_offset + self.num_env_serial * worker_id
-        ref = worker.set_working_env.remote(start_idx, self.num_env_serial)
+        pass
 
+    def set_working_env(
+        self, worker_id: int, worker: RaySerialEnv, start_idx: int, num_env_serial: int
+    ):
+        ref = worker.set_working_env.remote(start_idx, num_env_serial)
         self.pending_steps[ref] = worker_id
 
     def _terminate_worker(self, worker_id: int, worker: RaySerialEnv):
