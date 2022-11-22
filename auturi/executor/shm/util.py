@@ -7,6 +7,7 @@ import numpy as np
 
 from auturi.executor.environment import AuturiEnv
 from auturi.logger import get_logger
+from auturi.tuner import ActorConfig, ParallelizationConfig
 
 logger = get_logger()
 
@@ -175,3 +176,52 @@ def int_to_device(num: int) -> str:
         return "cpu"
     else:
         return f"cuda:{num}"
+
+
+def copy_config_to_buffer(
+    config: ParallelizationConfig, given_buffer: np.ndarray
+) -> None:
+    assert given_buffer.shape[-1] == 7, f"Given buffer shape = {given_buffer.shape}"
+    for actor_id, actor_config in config.actor_map.items():
+        list_ = np.array(
+            [
+                config.num_actors,  # num actor at the first
+                actor_config.num_envs,
+                actor_config.num_policy,
+                actor_config.num_parallel,
+                actor_config.batch_size,
+                actor_config.num_collect,
+                device_to_int(actor_config.policy_device),
+            ],
+            dtype=np.int32,
+        )
+        np.copyto(dst=given_buffer[actor_id, :], src=list_)
+
+
+def convert_buffer_to_config(given_buffer: np.ndarray) -> ParallelizationConfig:
+    assert given_buffer.shape[-1] == 7
+    num_actors = given_buffer[0, 0]
+    conf_list = []
+    for actor_id in range(num_actors):
+        line_ = given_buffer[actor_id]
+        (
+            _num_actors,
+            num_envs,
+            num_policy,
+            num_parallel,
+            batch_size,
+            num_collect,
+            int_dev,
+        ) = line_
+        assert _num_actors == num_actors
+        actor_config = ActorConfig(
+            num_envs=num_envs,
+            num_policy=num_policy,
+            num_parallel=num_parallel,
+            batch_size=batch_size,
+            policy_device=int_to_device(int_dev),
+            num_collect=num_collect,
+        )
+        conf_list += [actor_config]
+
+    return ParallelizationConfig.create(conf_list)

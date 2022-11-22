@@ -1,7 +1,10 @@
+from typing import List
+
+import auturi.executor.shm.util as util
 from auturi.executor.actor import AuturiActor
 from auturi.executor.shm.constant import ActorCommand
 from auturi.executor.shm.environment import SHMParallelEnv
-from auturi.executor.shm.mp_mixin import Request, SHMProcMixin
+from auturi.executor.shm.mp_mixin import SHMProcMixin
 from auturi.executor.shm.policy import SHMVectorPolicy
 from auturi.logger import get_logger
 
@@ -41,8 +44,7 @@ class SHMActorProc(SHMProcMixin):
     def __init__(
         self,
         worker_id,
-        req_queue,
-        rep_queue,
+        cmd_attr_dict,
         env_fns,
         policy_cls,
         policy_kwargs,
@@ -56,7 +58,7 @@ class SHMActorProc(SHMProcMixin):
         self.base_buffer_attr = base_buffer_attr
         self.rollout_buffer_attr = rollout_buffer_attr
 
-        super().__init__(worker_id, req_queue=req_queue, rep_queue=rep_queue)
+        super().__init__(worker_id, cmd_attr_dict=cmd_attr_dict)
 
     def initialize(self) -> None:
         self.actor = SHMActor(
@@ -68,6 +70,8 @@ class SHMActorProc(SHMProcMixin):
             self.rollout_buffer_attr,
         )
 
+        SHMProcMixin.initialize(self)
+
     @property
     def identifier(self):
         return f"Actor(aid={self.actor_id}): "
@@ -76,20 +80,20 @@ class SHMActorProc(SHMProcMixin):
         self.cmd_handler[ActorCommand.RECONFIGURE] = self.reconfigure_handler
         self.cmd_handler[ActorCommand.RUN] = self.run_handler
 
-    def reconfigure_handler(self, request: Request):
-        config = request.data[0]
+    def reconfigure_handler(self, cmd: int, _):
+        config = util.convert_buffer_to_config(self._command_buffer[:, 1:])
         self.actor.reconfigure(config, model=None)
         self.actor.sync()
         logger.debug(self.identifier + "Reconfigure.. sync done")
-        self.reply(request.cmd)
+        self.reply(cmd)
 
-    def run_handler(self, request: Request):
+    def run_handler(self, cmd: int, _):
         self.actor.run()
         self.actor.sync()
-        self.reply(request.cmd)
+        self.reply(cmd)
 
-    def _term_handler(self, request: Request):
+    def _term_handler(self, cmd: int, data_list: List[int]):
         logger.info(self.identifier + "Got Term signal....")
         self.actor.vector_envs.terminate()
         self.actor.vector_policy.terminate()
-        super()._term_handler(request)
+        super()._term_handler(cmd, data_list)

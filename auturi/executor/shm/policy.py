@@ -8,7 +8,6 @@ from auturi.executor.policy import AuturiPolicy, AuturiVectorPolicy
 from auturi.executor.shm.constant import EnvStateEnum, PolicyCommand, PolicyStateEnum
 from auturi.executor.shm.mp_mixin import SHMVectorLoopMixin
 from auturi.executor.shm.policy_proc import SHMPolicyProc
-from auturi.executor.shm.util import _create_buffer_from_sample, set_shm_from_attr, wait
 from auturi.logger import get_logger
 from auturi.tuner.config import ParallelizationConfig
 

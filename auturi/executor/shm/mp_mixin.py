@@ -1,9 +1,6 @@
 """Define Multiprocessing Mixin class that supports for SHMVectorXXX and SHMXXXProc.
 
 """
-import os
-import queue as naive_queue
-from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
@@ -17,32 +14,20 @@ from auturi.logger import get_logger
 
 logger = get_logger()
 
-
-@dataclass
-class Request:
-    cmd: str
-    data: List[Any] = field(default_factory=list)
-    worker_id: Optional[int] = None
-
-
-@dataclass
-class Reply:
-    worker_id: int
-    cmd: str
-
-
 BUFFER_COMMAND_IDX = 0
 BUFFER_DATA_OFFSET = 1
 
 
 class SHMVectorMixin:
-    def __init__(self, max_workers: int):
+    def __init__(self, max_workers: int, max_data=2):
         self.max_workers = max_workers
         (
             self.__command,
             self._command_buffer,
             self.cmd_attr_dict,
-        ) = _create_buffer_from_sample(np.array([1, 1, 1], dtype=np.int32), max_workers)
+        ) = _create_buffer_from_sample(
+            np.array([1] * (1 + max_data), dtype=np.int32), max_workers
+        )
         self._command_buffer.fill(SHMCommand.TERM)
 
     @property

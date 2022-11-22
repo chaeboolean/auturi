@@ -3,16 +3,18 @@ from typing import Any, Callable, Dict, List, Tuple
 
 import torch.nn as nn
 
+import auturi.executor.shm.util as util
 from auturi.executor.environment import AuturiEnv
 from auturi.executor.shm.actor import SHMActorProc
 from auturi.executor.shm.constant import ActorCommand
 from auturi.executor.shm.mp_mixin import SHMVectorMixin
-from auturi.executor.shm.util import create_shm_from_env
 from auturi.executor.vector_actor import AuturiVectorActor
 from auturi.logger import get_logger
 from auturi.tuner import AuturiMetric, AuturiTuner, ParallelizationConfig
 
 logger = get_logger()
+MAX_ACTOR = 128
+MAX_ACTOR_DATA = 7
 
 
 class SHMVectorActor(AuturiVectorActor, SHMVectorMixin):
@@ -30,7 +32,7 @@ class SHMVectorActor(AuturiVectorActor, SHMVectorMixin):
             self.base_buffer_attr,
             self.rollout_buffers,
             self.rollout_buffer_attr,
-        ) = create_shm_from_env(env_fns[0], len(env_fns), self.rollout_size)
+        ) = util.create_shm_from_env(env_fns[0], len(env_fns), self.rollout_size)
 
         logger.debug("==================================")
         for key, val in self.base_buffers.items():
@@ -46,7 +48,7 @@ class SHMVectorActor(AuturiVectorActor, SHMVectorMixin):
         self.policy_kwargs = policy_kwargs
 
         AuturiVectorActor.__init__(self, env_fns, policy_cls, policy_kwargs, tuner)
-        SHMVectorMixin.__init__(self)
+        SHMVectorMixin.__init__(self, MAX_ACTOR, MAX_ACTOR_DATA)
 
     # for debugging message
     @property
@@ -55,7 +57,7 @@ class SHMVectorActor(AuturiVectorActor, SHMVectorMixin):
 
     def reconfigure(self, config: ParallelizationConfig, model: nn.Module):
         logger.info(f"\n\n============================reconfigure {config}\n")
-
+        util.copy_config_to_buffer(config, self._command_buffer[:, 1:])
         super().reconfigure(config, model)
         self.sync()
 
@@ -73,26 +75,23 @@ class SHMVectorActor(AuturiVectorActor, SHMVectorMixin):
         self,
         worker_id: int,
         worker: SHMActorProc,
-        config: ParallelizationConfig,
+        config: ParallelizationConfig,  # do not need
         model: nn.Module,  # do not need
     ):
         self.request(
             ActorCommand.RECONFIGURE,
             worker_id=worker_id,
-            data=[config],
         )
 
         logger.info(self.identifier + f"RECONFIGURE({worker_id})")
 
     def _terminate_worker(self, worker_id: int, worker: SHMActorProc) -> None:
-        super().teardown_handler(worker_id)
-        worker.join()
+        super().teardown_handler(worker_id, worker)
         logger.info(self.identifier + f"Join worker={worker_id} pid={worker.pid}")
 
     def terminate(self):
-        # self.request(EnvCommand.TERM)
-        for wid, p in self.workers():
-            self._terminate_worker(wid, p)
+        workers = [p for _, p in self.workers()]
+        SHMVectorMixin.terminate_all_worker(self, workers)
 
         # Responsible to unlink created shm buffer
         for _, tuple_ in self.base_buffers.items():
