@@ -13,6 +13,8 @@ from auturi.tuner import ParallelizationConfig
 
 logger = get_logger()
 
+MAX_ENV_NUM = 6
+
 
 class SHMParallelEnv(AuturiVectorEnv, SHMVectorLoopMixin):
     """SHMParallelVectorEnv
@@ -44,7 +46,7 @@ class SHMParallelEnv(AuturiVectorEnv, SHMVectorLoopMixin):
         self._env_offset, self._rollout_offset = -1, -1
 
         AuturiVectorEnv.__init__(self, actor_id, env_fns)
-        SHMVectorLoopMixin.__init__(self)
+        SHMVectorLoopMixin.__init__(self, MAX_ENV_NUM)
 
     @property
     def identifier(self):
@@ -75,13 +77,14 @@ class SHMParallelEnv(AuturiVectorEnv, SHMVectorLoopMixin):
 
     def _terminate_worker(self, worker_id: int, worker: SHMEnvProc) -> None:
         super().teardown_handler(worker_id)
-        worker.join()
         logger.info(self.identifier + f"Join worker={worker_id} pid={worker.pid}")
 
     def terminate(self):
         # self.request(EnvCommand.TERM)
         for wid, p in self.workers():
             self._terminate_worker(wid, p)
+
+        SHMVectorLoopMixin.terminate(self)
 
     # Internally call reset.
     def start_loop(self):

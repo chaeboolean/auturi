@@ -1,15 +1,16 @@
 class SHMCommand:
-    INIT = "INIT"
-    TERM = "TERM"
-    INIT_LOOP = "INIT_LOOP"
-    STOP_LOOP = "STOP_LOOP"
+    TERM = 0
+    INIT = 1
+    INIT_LOOP = 2
+    STOP_LOOP = 3
+    CMD_DONE = 5
 
 
 class EnvCommand(SHMCommand):
-    RESET = "RESET"
-    AGGREGATE = "AGGREGATE"
-    SEED = "SEED"
-    SET_ENV = "SET_ENV"
+    RESET = 10
+    AGGREGATE = 11
+    SEED = 12
+    SET_ENV = 13
 
 
 class PolicyCommand(SHMCommand):

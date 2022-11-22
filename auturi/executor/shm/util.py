@@ -19,7 +19,6 @@ def wait(cond_, debug_msg, timeout=2):
         if time.time() - last_timeout > timeout:
             msg = debug_msg() if callable(debug_msg) else debug_msg
             logger.debug(msg)
-            print(msg)
             last_timeout = time.time()
 
 

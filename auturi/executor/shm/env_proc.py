@@ -1,8 +1,11 @@
+import time
+from typing import List
+
 import numpy as np
 
 from auturi.executor.environment import AuturiSerialEnv
 from auturi.executor.shm.constant import EnvCommand, EnvStateEnum
-from auturi.executor.shm.mp_mixin import Request, SHMProcLoopMixin
+from auturi.executor.shm.mp_mixin import SHMProcLoopMixin
 from auturi.executor.shm.util import set_shm_from_attr, wait
 from auturi.logger import get_logger
 
@@ -14,8 +17,7 @@ class SHMEnvProc(SHMProcLoopMixin):
         self,
         actor_id,
         worker_id,
-        req_queue,
-        rep_queue,
+        cmd_attr_dict,
         env_fns,
         base_buffer_attr,
         rollout_buffer_attr,
@@ -25,7 +27,7 @@ class SHMEnvProc(SHMProcLoopMixin):
         self.base_buffer_attr = base_buffer_attr
         self.rollout_buffer_attr = rollout_buffer_attr
 
-        super().__init__(worker_id, req_queue=req_queue, rep_queue=rep_queue)
+        super().__init__(worker_id, cmd_attr_dict=cmd_attr_dict)
 
     def initialize(self) -> None:
         self.env = AuturiSerialEnv(self.actor_id, self.worker_id, self.env_fns)
@@ -54,35 +56,36 @@ class SHMEnvProc(SHMProcLoopMixin):
         self.cmd_handler[EnvCommand.SET_ENV] = self.set_visible_env_handler
         self.cmd_handler[EnvCommand.AGGREGATE] = self.aggregate_handler
 
-    def reset_handler(self, request: Request):
+    def reset_handler(self, cmd: int, data_list: List[int]):
         obs = self.env.reset()
         self.insert_obs_buffer(obs)
-        self.reply(request.cmd)
+        self.reply(cmd)
 
-    def seed_handler(self, request: Request):
-        self.env.seed(request.data[0])
-        self.reply(request.cmd)
+    def seed_handler(self, cmd: int, data_list: List[int]):
+        self.env.seed(data_list[0])
+        self.reply(cmd)
 
-    def set_visible_env_handler(self, request: Request):
-        self.env.set_working_env(request.data[0], request.data[1])
-        self.reply(request.cmd)
+    def set_visible_env_handler(self, cmd: int, data_list: List[int]):
+        self.env.set_working_env(data_list[0], data_list[1])
+        self.reply(cmd)
 
-    def aggregate_handler(self, request: Request):
+    def aggregate_handler(self, cmd: int, data_list: List[int]):
         local_rollouts = self.env.aggregate_rollouts()
 
         for key_, trajectories in local_rollouts.items():
             roll_buffer = self.rollout_buffers[key_][1]
 
             # TODO: stack first
-            np.copyto(roll_buffer[request.data[0] : request.data[1]], trajectories)
+            np.copyto(roll_buffer[data_list[0] : data_list[1]], trajectories)
 
-        self.reply(request.cmd)
+        self.reply(cmd)
 
     def _step_loop_once(self, is_first: bool) -> None:
         if is_first:
             assert np.all(self._get_env_state() == EnvStateEnum.STOPPED)
 
             logger.debug(self.identifier + "Entered the loop.")
+            self.stime = time.perf_counter()
 
             obs = self.env.reset()
             self.insert_obs_buffer(obs)
@@ -123,4 +126,5 @@ class SHMEnvProc(SHMProcLoopMixin):
         wait(cond_, self.identifier + f"Wait to set STOP sign.")
         self._set_env_state(EnvStateEnum.STOPPED)
         logger.debug(self.identifier + f"Escaped the loop.")
+        print(self.identifier + f" {time.perf_counter() - self.stime} sec.")
         super()._wait_to_stop()
