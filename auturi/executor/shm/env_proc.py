@@ -114,15 +114,18 @@ class SHMEnvProc(SHMProcLoopMixin):
     def _get_env_state(self):
         return self.env_buffer[self.env.start_idx : self.env.end_idx]
 
-    def _wait_to_stop(self):
-        # env which policy worker is allocated should finish its env.step()
-        cond_ = lambda: np.all(
+    def _check_loop_done(self) -> bool:
+        return np.all(
             np.ma.mask_or(
                 (self._get_env_state() == EnvStateEnum.STEP_DONE),
                 (self._get_env_state() == EnvStateEnum.QUEUED),
             )
         )
-        wait(cond_, self.identifier + f"Wait to set STOP sign.")
+
+    def _stop_loop_handler(self):
+        # env which policy worker is allocated should finish its env.step()
+        # msg_fn = lambda: self.identifier + f"Wait to set STOP sign. env_state={self._get_env_state()}"
+        # wait(cond_, msg_fn)
         self._set_env_state(EnvStateEnum.STOPPED)
         logger.debug(self.identifier + f"Escaped the loop.")
-        super()._wait_to_stop()
+        super()._stop_loop_handler()

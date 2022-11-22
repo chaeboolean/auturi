@@ -11,6 +11,7 @@ mp = _mp.get_context("spawn")
 from auturi.executor.shm.constant import SHMCommand
 from auturi.executor.shm.util import _create_buffer_from_sample, set_shm_from_attr, wait
 from auturi.logger import get_logger
+import time
 
 logger = get_logger()
 
@@ -39,12 +40,8 @@ class SHMVectorMixin:
         kwargs["worker_id"] = worker_id
         kwargs["cmd_attr_dict"] = self.cmd_attr_dict
         self._command_buffer[worker_id, BUFFER_COMMAND_IDX] = SHMCommand.INIT
-        logger.debug(
-            self.identifier + f"after init -> {self._command_buffer[:self.num_workers]}"
-        )
-
         p = proc_cls(**kwargs)
-        logger.info(self.identifier + f"Create worker={worker_id} pid={p.pid}")
+        logger.debug(self.identifier + f"Create worker={worker_id} pid={p.pid}")
         p.start()
         return p
 
@@ -65,7 +62,8 @@ class SHMVectorMixin:
         )
         msg_fn = (
             lambda: self.identifier
-            + f" waiting cmd_done. cur_buffer={self._command_buffer[:self.num_workers]}"
+            + f" waiting those=> {np.where(self._command_buffer[self._slice(worker_id), BUFFER_COMMAND_IDX] != SHMCommand.CMD_DONE)[0]}\n"
+            + f" they are=> {self._command_buffer[np.where(self._command_buffer[self._slice(worker_id), BUFFER_COMMAND_IDX] != SHMCommand.CMD_DONE)[0], 0]}\n"
         )
         wait(cond_, msg_fn)
 
@@ -155,6 +153,8 @@ class SHMProcMixin(mp.Process):
         self.reply(SHMCommand.INIT)
 
         logger.debug(self.identifier + f"Enter Loop")
+
+        ts = time.perf_counter()
         while True:
             cmd, data_list = self._get_command()
             # map handler
@@ -168,15 +168,17 @@ class SHMProcMixin(mp.Process):
                 logger.debug(self.identifier + f"Terminate")
                 break
 
+            if time.perf_counter() - ts > 2:
+                logger.info(self.identifier + f"Polling... last cmd={cmd}")
+                ts = time.perf_counter()
+
 
 class SHMVectorLoopMixin(SHMVectorMixin):
     def start_loop(self):
         self.request(SHMCommand.INIT_LOOP)
 
     def stop_loop(self):
-        logger.debug(self.identifier + "**********")
         self.request(SHMCommand.STOP_LOOP, to_wait=False)
-        logger.debug(self.identifier + "hererehrerere")
         self.sync()
 
 
@@ -188,12 +190,14 @@ class SHMProcLoopMixin(SHMProcMixin):
     def _loop_handler(self, cmd: int, data_list: List[int]):
         """Unlike other handler, it watches if STOP_LOOP request have come."""
         self._step_loop_once(is_first=True)
-
         while True:
-            cmd, data_list = self._get_command()
+            cmd, _ = self._get_command()
             if cmd == SHMCommand.STOP_LOOP:
-                self._wait_to_stop()
-                break
+                if self._check_loop_done():
+                    self._stop_loop_handler()
+                    break
+                else:
+                    self._step_loop_once(is_first=False)
 
             elif cmd == SHMCommand.INIT_LOOP:
                 self._step_loop_once(is_first=False)
@@ -201,7 +205,10 @@ class SHMProcLoopMixin(SHMProcMixin):
             else:
                 raise RuntimeError(f"{cmd}: FORBIDDEN COMMAND inside RUN_LOOP")
 
-    def _wait_to_stop(self):
+    def _check_loop_done(self) -> bool:
+        return True
+
+    def _stop_loop_handler(self):
         self.reply(cmd=SHMCommand.STOP_LOOP)
 
     def _step_loop_once(self, is_first: bool):

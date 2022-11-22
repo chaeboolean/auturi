@@ -94,7 +94,7 @@ class SHMPolicyProc(SHMProcLoopMixin):
             )[0]
 
             assert len(assigned_env_ids) > 0
-            logger.info(
+            logger.debug(
                 self.identifier
                 + f"policy.step: given={assigned_env_ids}, env_buffer={self.env_buffer}, visible={(np.where(self.env_buffer == 30))[0]}, set fn={(np.where(self.env_buffer[self._env_mask] == 30))[0]},, mask={self._env_mask}"
             )

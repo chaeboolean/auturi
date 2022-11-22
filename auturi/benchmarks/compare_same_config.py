@@ -68,12 +68,12 @@ def print_result(args, collect_times):
 
     with open(OUTPUT_FILENAME, "a") as f:
         f.write(
-            f"\n\n{name}: env={args.env}, n_envs={args.num_collect}, num_collect={args.num_collect}\n"
+            f"\n\n{name}: env={args.env}, n_envs={args.num_envs}, num_collect={args.num_collect}\n"
         )
         f.write(f"Result: {np.median(np.array(collect_times))}, {collect_times}\n")
 
     print(
-        f"\n\n{name}: env={args.env}, n_envs={args.num_collect}, num_collect={args.num_collect}"
+        f"\n\n{name}: env={args.env}, n_envs={args.num_envs}, num_collect={args.num_collect}"
     )
     print(collect_times)
 

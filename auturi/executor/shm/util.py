@@ -19,7 +19,7 @@ def wait(cond_, debug_msg, timeout=2):
     while not cond_():
         if time.time() - last_timeout > timeout:
             msg = debug_msg() if callable(debug_msg) else debug_msg
-            logger.debug(msg)
+            logger.info(msg)
             last_timeout = time.time()
 
 
@@ -165,7 +165,7 @@ def device_to_int(device: str) -> int:
     if device == "cpu":
         return -1
     try:
-        return device.split(":")[-1]
+        return int(device.split(":")[-1])
 
     except ValueError as e:
         return 0
