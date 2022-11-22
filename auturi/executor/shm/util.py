@@ -158,3 +158,20 @@ def create_shm_from_env(
     # initialize env buffers
     base_buffers["env"][1].fill(0)
     return base_buffers, base_buffer_attr, rollout_buffers, rollout_buffer_attr
+
+
+def device_to_int(device: str) -> int:
+    if device == "cpu":
+        return -1
+    try:
+        return device.split(":")[-1]
+
+    except ValueError as e:
+        return 0
+
+
+def int_to_device(num: int) -> str:
+    if num < 0:
+        return "cpu"
+    else:
+        return f"cuda:{num}"

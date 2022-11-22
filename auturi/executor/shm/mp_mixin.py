@@ -42,7 +42,7 @@ class SHMVectorMixin:
             self.__command,
             self._command_buffer,
             self.cmd_attr_dict,
-        ) = _create_buffer_from_sample(np.array([1, 1, 1], dtype=np.int8), max_workers)
+        ) = _create_buffer_from_sample(np.array([1, 1, 1], dtype=np.int32), max_workers)
         self._command_buffer.fill(SHMCommand.TERM)
 
     @property
@@ -54,13 +54,13 @@ class SHMVectorMixin:
         kwargs["worker_id"] = worker_id
         kwargs["cmd_attr_dict"] = self.cmd_attr_dict
         self._command_buffer[worker_id, BUFFER_COMMAND_IDX] = SHMCommand.INIT
-        logger.debug(self.identifier + f"after init -> {self._command_buffer}")
+        logger.debug(
+            self.identifier + f"after init -> {self._command_buffer[:self.num_workers]}"
+        )
 
         p = proc_cls(**kwargs)
         logger.info(self.identifier + f"Create worker={worker_id} pid={p.pid}")
         p.start()
-        # import time
-        # time.sleep(2)
         return p
 
     @property
@@ -68,7 +68,7 @@ class SHMVectorMixin:
         raise NotImplementedError
 
     def _slice(self, worker_id: Optional[int] = None):
-        if worker_id is not None:
+        if worker_id is None:
             return slice(0, self.num_workers)
         else:
             return slice(worker_id, worker_id + 1)
@@ -80,12 +80,19 @@ class SHMVectorMixin:
         )
         msg_fn = (
             lambda: self.identifier
-            + f" waiting cmd_done. cur_buffer={self._command_buffer}"
+            + f" waiting cmd_done. cur_buffer={self._command_buffer[:self.num_workers]}"
         )
         wait(cond_, msg_fn)
 
-    def request(self, cmd: str, worker_id: Optional[int] = None, data: List[Any] = []):
-        self._wait_cmd_done(worker_id)
+    def request(
+        self,
+        cmd: str,
+        worker_id: Optional[int] = None,
+        data: List[Any] = [],
+        to_wait=True,
+    ):
+        if to_wait:
+            self._wait_cmd_done(worker_id)
         _slice = self._slice(worker_id)
         for idx, data_elem in enumerate(data):
             self._command_buffer[_slice, idx + 1] = data_elem
@@ -99,8 +106,13 @@ class SHMVectorMixin:
         self.request(SHMCommand.TERM, worker_id=worker_id)
         self._wait_cmd_done(worker_id)
         worker.join()
+        self._command_buffer[worker_id, BUFFER_COMMAND_IDX] = SHMCommand.TERM
 
-    def terminate(self):
+    def terminate_all_worker(self, workers: List[mp.Process]):
+        self.request(SHMCommand.TERM)
+        for worker in workers:
+            worker.join()
+
         self.__command.unlink()
 
 
@@ -120,7 +132,7 @@ class SHMProcMixin(mp.Process):
         """
         # Does not change during runtime
         self.worker_id = worker_id
-        self.__command, self._command_buffer = set_shm_from_attr(cmd_attr_dict)
+        self.cmd_attr_dict = cmd_attr_dict
         self.cmd_handler = {SHMCommand.TERM: self._term_handler}
 
         super().__init__()
@@ -134,7 +146,7 @@ class SHMProcMixin(mp.Process):
 
     def initialize(self) -> None:
         """The entrypoint of child process."""
-        raise NotImplementedError
+        self.__command, self._command_buffer = set_shm_from_attr(self.cmd_attr_dict)
 
     def set_handler_for_command(self) -> None:
         """Set handler function for all possible commands."""
@@ -147,7 +159,6 @@ class SHMProcMixin(mp.Process):
     def reply(self, cmd: int) -> None:
         self._wait_cmd(cmd)
         self._command_buffer[self.worker_id, BUFFER_COMMAND_IDX] = SHMCommand.CMD_DONE
-        # logger.debug(self.identifier + f"its me, after reply = {self._command_buffer[self.worker_id]}, cmd={self._command_buffer}")
 
     def _get_command(self) -> Tuple[int, List[int]]:
         my_line = self._command_buffer[self.worker_id]
@@ -166,7 +177,7 @@ class SHMProcMixin(mp.Process):
                 continue
             else:
                 logger.debug(self.identifier + f"Got CMD={cmd}")
-                self.cmd_handler[cmd](data_list)
+                self.cmd_handler[cmd](cmd, data_list)
 
             if cmd == SHMCommand.TERM:
                 logger.debug(self.identifier + f"Terminate")
@@ -178,7 +189,9 @@ class SHMVectorLoopMixin(SHMVectorMixin):
         self.request(SHMCommand.INIT_LOOP)
 
     def stop_loop(self):
-        self.request(SHMCommand.STOP_LOOP)
+        logger.debug(self.identifier + "**********")
+        self.request(SHMCommand.STOP_LOOP, to_wait=False)
+        logger.debug(self.identifier + "hererehrerere")
         self.sync()
 
 
@@ -195,12 +208,13 @@ class SHMProcLoopMixin(SHMProcMixin):
             cmd, data_list = self._get_command()
             if cmd == SHMCommand.STOP_LOOP:
                 self._wait_to_stop()
+                break
 
             elif cmd == SHMCommand.INIT_LOOP:
                 self._step_loop_once(is_first=False)
 
             else:
-                raise RuntimeError("FORBIDDEN COMMAND inside RUN_LOOP")
+                raise RuntimeError(f"{cmd}: FORBIDDEN COMMAND inside RUN_LOOP")
 
     def _wait_to_stop(self):
         self.reply(cmd=SHMCommand.STOP_LOOP)

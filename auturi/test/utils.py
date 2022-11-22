@@ -2,6 +2,7 @@ import math
 import signal
 import time
 from collections import defaultdict
+from functools import partial
 
 import gym
 import numpy as np
@@ -130,14 +131,12 @@ class DumbPolicy(AuturiPolicy):
         pass
 
 
+def _create_fn(idx):
+    return DumbEnv(idx)
+
+
 def create_env_fns(num_envs):
-    def create_fn(idx):
-        def _wrap():
-            return DumbEnv(idx)
-
-        return _wrap
-
-    return [create_fn(idx) for idx in range(num_envs)]
+    return [partial(_create_fn, idx) for idx in range(num_envs)]
 
 
 def create_policy_args():

@@ -1,9 +1,11 @@
+from typing import List
+
 import numpy as np
 
+import auturi.executor.shm.util as util
 from auturi.executor.policy import AuturiPolicy
 from auturi.executor.shm.constant import EnvStateEnum, PolicyCommand, PolicyStateEnum
-from auturi.executor.shm.mp_mixin import Request, SHMProcLoopMixin
-from auturi.executor.shm.util import set_shm_from_attr
+from auturi.executor.shm.mp_mixin import SHMProcLoopMixin
 from auturi.logger import get_logger
 
 logger = get_logger()
@@ -14,10 +16,9 @@ class SHMPolicyProc(SHMProcLoopMixin):
         self,
         actor_id,
         worker_id,
-        req_queue,
-        rep_queue,
         policy_cls,
         policy_kwargs,
+        cmd_attr_dict,
         base_buffer_attr,
     ):
         self.actor_id = actor_id
@@ -26,7 +27,7 @@ class SHMPolicyProc(SHMProcLoopMixin):
 
         self.base_buffer_attr = base_buffer_attr
 
-        super().__init__(worker_id, req_queue=req_queue, rep_queue=rep_queue)
+        super().__init__(worker_id, cmd_attr_dict=cmd_attr_dict)
 
     def initialize(self) -> None:
         self.policy_kwargs["idx"] = self.worker_id
@@ -34,19 +35,24 @@ class SHMPolicyProc(SHMProcLoopMixin):
 
         assert isinstance(self.policy, AuturiPolicy)
 
-        self.__env, self.env_buffer = set_shm_from_attr(self.base_buffer_attr["env"])
-        self.__policy, self.policy_buffer = set_shm_from_attr(
+        self.__env, self.env_buffer = util.set_shm_from_attr(
+            self.base_buffer_attr["env"]
+        )
+        self.__policy, self.policy_buffer = util.set_shm_from_attr(
             self.base_buffer_attr["policy"]
         )
-        self.__obs, self.obs_buffer = set_shm_from_attr(self.base_buffer_attr["obs"])
-        self.__action, self.action_buffer = set_shm_from_attr(
+        self.__obs, self.obs_buffer = util.set_shm_from_attr(
+            self.base_buffer_attr["obs"]
+        )
+        self.__action, self.action_buffer = util.set_shm_from_attr(
             self.base_buffer_attr["action"]
         )
-        self.__artifact, self.artifact_buffer = set_shm_from_attr(
+        self.__artifact, self.artifact_buffer = util.set_shm_from_attr(
             self.base_buffer_attr["artifact"]
         )
 
         self._env_mask = None
+        SHMProcLoopMixin.initialize(self)
 
     @property
     def identifier(self):
@@ -56,15 +62,15 @@ class SHMPolicyProc(SHMProcLoopMixin):
         self.cmd_handler[PolicyCommand.LOAD_MODEL] = self.load_model_handler
         self.cmd_handler[PolicyCommand.SET_POLICY_ENV] = self.set_env_handler
 
-    def load_model_handler(self, request: Request):
+    def load_model_handler(self, cmd: int, data_list: List[int]):
         # cannot receive model parameters via SHM for now.
-        self.policy.load_model(None, request.data[0])
-        self.reply(request.cmd)
+        self.policy.load_model(None, util.int_to_device(data_list[0]))
+        self.reply(cmd)
 
-    def set_env_handler(self, request: Request):
-        self._env_mask = slice(request.data[0], request.data[0] + request.data[1])
+    def set_env_handler(self, cmd: int, data_list: List[int]):
+        self._env_mask = slice(data_list[0], data_list[0] + data_list[1])
         logger.debug(self.identifier + f"set visible mask ({self._env_mask})")
-        self.reply(request.cmd)
+        self.reply(cmd)
 
     def _set_state(self, state):
         self.policy_buffer[self.worker_id] = state

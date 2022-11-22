@@ -1,4 +1,3 @@
-import time
 from typing import List
 
 import numpy as np
@@ -46,6 +45,8 @@ class SHMEnvProc(SHMProcLoopMixin):
             raw_buf, np_buffer = set_shm_from_attr(attr_dict)
             self.rollout_buffers[key] = (raw_buf, np_buffer)
 
+        SHMProcLoopMixin.initialize(self)
+
     @property
     def identifier(self):
         return f"EnvProc(aid={self.actor_id}, wid={self.worker_id}): "
@@ -85,8 +86,6 @@ class SHMEnvProc(SHMProcLoopMixin):
             assert np.all(self._get_env_state() == EnvStateEnum.STOPPED)
 
             logger.debug(self.identifier + "Entered the loop.")
-            self.stime = time.perf_counter()
-
             obs = self.env.reset()
             self.insert_obs_buffer(obs)
             self._set_env_state(EnvStateEnum.STEP_DONE)
@@ -126,5 +125,4 @@ class SHMEnvProc(SHMProcLoopMixin):
         wait(cond_, self.identifier + f"Wait to set STOP sign.")
         self._set_env_state(EnvStateEnum.STOPPED)
         logger.debug(self.identifier + f"Escaped the loop.")
-        print(self.identifier + f" {time.perf_counter() - self.stime} sec.")
         super()._wait_to_stop()

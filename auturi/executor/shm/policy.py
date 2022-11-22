@@ -3,6 +3,7 @@ from typing import Any, Dict, List
 import numpy as np
 import torch.nn as nn
 
+import auturi.executor.shm.util as util
 from auturi.executor.policy import AuturiPolicy, AuturiVectorPolicy
 from auturi.executor.shm.constant import EnvStateEnum, PolicyCommand, PolicyStateEnum
 from auturi.executor.shm.mp_mixin import SHMVectorLoopMixin
@@ -27,17 +28,21 @@ class SHMVectorPolicy(AuturiVectorPolicy, SHMVectorLoopMixin):
         self.base_buffer_attr = base_buffer_attr
 
         # create policy buffer
-        self.__policy, self.policy_buffer, policy_attr = _create_buffer_from_sample(
-            sample_=1, max_num=MAX_POLICY
-        )
+        (
+            self.__policy,
+            self.policy_buffer,
+            policy_attr,
+        ) = util._create_buffer_from_sample(sample_=1, max_num=MAX_POLICY)
         self.base_buffer_attr["policy"] = policy_attr
 
-        self.__env, self.env_buffer = set_shm_from_attr(self.base_buffer_attr["env"])
+        self.__env, self.env_buffer = util.set_shm_from_attr(
+            self.base_buffer_attr["env"]
+        )
         self._env_offset = -1  # should be intialized when reconfigure
         self._env_mask = None
 
         AuturiVectorPolicy.__init__(self, actor_id, policy_cls, policy_kwargs)
-        SHMVectorLoopMixin.__init__(self)
+        SHMVectorLoopMixin.__init__(self, MAX_POLICY)
 
     @property
     def identifier(self):
@@ -70,21 +75,20 @@ class SHMVectorPolicy(AuturiVectorPolicy, SHMVectorLoopMixin):
         )
 
     def _terminate_worker(self, worker_id: int, worker: SHMPolicyProc) -> None:
-        super().teardown_handler(worker_id)
-        worker.join()
+        super().teardown_handler(worker_id, worker)
         logger.info(self.identifier + f"Join worker={worker_id} pid={worker.pid}")
 
     def terminate(self):
         # self.request(EnvCommand.TERM)
-        for wid, p in self.workers():
-            self._terminate_worker(wid, p)
-
+        workers = [p for _, p in self.workers()]
+        SHMVectorLoopMixin.terminate_all_worker(self, workers)
         self.__policy.unlink()
 
     def _load_policy_model(
         self, worker_id: int, policy: AuturiPolicy, model: nn.Module, device: str
     ) -> None:
-        self.request(PolicyCommand.LOAD_MODEL, worker_id=worker_id, data=[device])
+        device_num = util.device_to_int(device)
+        self.request(PolicyCommand.LOAD_MODEL, worker_id=worker_id, data=[device_num])
 
     def compute_actions(self, env_ids: List[int], n_steps: int) -> object:
         while True:
@@ -112,7 +116,7 @@ class SHMVectorPolicy(AuturiVectorPolicy, SHMVectorLoopMixin):
         SHMVectorLoopMixin.start_loop(self)
 
     def stop_loop(self):
-        wait(
+        util.wait(
             lambda: np.all(self._get_state() == PolicyStateEnum.READY),
             self.identifier + "Wait to stop loop..",
         )

@@ -14,13 +14,13 @@ class EnvCommand(SHMCommand):
 
 
 class PolicyCommand(SHMCommand):
-    LOAD_MODEL = "LOAD_MODEL"
-    SET_POLICY_ENV = "SET_POLICY_ENV"
+    LOAD_MODEL = 14
+    SET_POLICY_ENV = 15
 
 
 class ActorCommand(SHMCommand):
-    RECONFIGURE = "RECONFIGURE"
-    RUN = "RUN"
+    RECONFIGURE = 16
+    RUN = 17
 
 
 class PolicyStateEnum:

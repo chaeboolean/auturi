@@ -1,9 +1,14 @@
 import time
 from multiprocessing import shared_memory as shm
+from typing import List
 
 import numpy as np
 
-from auturi.executor.shm.mp_mixin import Request, SHMProcLoopMixin, SHMVectorLoopMixin
+from auturi.executor.shm.mp_mixin import SHMProcLoopMixin, SHMVectorLoopMixin
+
+RESET = 11
+INCR = 12
+DECR = 13
 
 
 class _TestVector(SHMVectorLoopMixin):
@@ -13,18 +18,21 @@ class _TestVector(SHMVectorLoopMixin):
         self.buffer = np.ndarray(shape, dtype=np.int32, buffer=self.__buffer.buf)
         self.workers = dict()
 
-        super().__init__()
+        super().__init__(max_workers=100)
 
     @property
     def identifier(self):
-        return "TestVector"
+        return "TestVector: "
+
+    @property
+    def num_workers(self):
+        return len(self.workers)
 
     def reconfigure(self, num_workers: int):
         old_num_wokers = len(self.workers)
         for worker_id in range(old_num_wokers):
             if worker_id >= num_workers:
-                self.teardown_handler(worker_id)
-                self.workers[worker_id].join()
+                self.teardown_handler(worker_id, self.workers[worker_id])
                 del self.workers[worker_id]
 
         for worker_id in range(old_num_wokers, num_workers):
@@ -37,42 +45,40 @@ class _TestVector(SHMVectorLoopMixin):
         self.sync()
 
     def terminate(self):
-        curr_num_workers = len(self._request_handlers)
-        for wid in range(curr_num_workers):
-            self.teardown_handler(wid)
+        super().terminate_all_worker(workers=list(self.workers.values()))
         self.__buffer.unlink()
 
 
 class _TestProc(SHMProcLoopMixin):
-    def __init__(self, worker_id, req_queue, rep_queue, buf_name: str):
+    def __init__(self, worker_id, cmd_attr_dict, buf_name: str):
         self.buf_name = buf_name
-        super().__init__(worker_id, req_queue=req_queue, rep_queue=rep_queue)
+        super().__init__(worker_id, cmd_attr_dict)
 
     @property
     def identifier(self):
-        return "TestProc"
+        return "TestProc: "
 
     def initialize(self) -> None:
         self.__buffer = shm.SharedMemory(self.buf_name)
         self.buffer = np.ndarray((80,), np.int32, buffer=self.__buffer.buf)
+        super().initialize()
 
     def set_handler_for_command(self) -> None:
-        self.cmd_handler["RESET"] = self._reset_handler
-        self.cmd_handler["INCR"] = self._incr_handler
-        self.cmd_handler["DECR"] = self._decr_handler
-        self.cmd_handler["RUN_LOOP"] = self._loop_handler
+        self.cmd_handler[RESET] = self._reset_handler
+        self.cmd_handler[INCR] = self._incr_handler
+        self.cmd_handler[DECR] = self._decr_handler
 
-    def _incr_handler(self, req: Request):
-        self.buffer[self.worker_id] += req.data[0]
-        self.reply(req.cmd)
+    def _incr_handler(self, cmd: int, data_list: List[int]):
+        self.buffer[self.worker_id] += data_list[0]
+        self.reply(cmd)
 
-    def _decr_handler(self, req: Request):
-        self.buffer[self.worker_id] -= req.data[0]
-        self.reply(req.cmd)
+    def _decr_handler(self, cmd: int, data_list: List[int]):
+        self.buffer[self.worker_id] -= data_list[0]
+        self.reply(cmd)
 
-    def _reset_handler(self, req: Request):
+    def _reset_handler(self, cmd: int, data_list: List[int]):
         self.buffer[self.worker_id] = 0
-        self.reply(req.cmd)
+        self.reply(cmd)
 
     def _step_loop_once(self, is_first: bool):
         self.buffer[self.worker_id] += 1
@@ -84,8 +90,8 @@ def test_basic():
     buffer = vector_manager.buffer
     vector_manager.reconfigure(2)
 
-    vector_manager.request(cmd="RESET")
-    vector_manager.request(cmd="INCR", data=[2])
+    vector_manager.request(cmd=RESET)
+    vector_manager.request(cmd=INCR, data=[2])
     vector_manager.sync()
     assert buffer[0] == 2
 
@@ -99,14 +105,14 @@ def test_multiple_children():
     buffer = vector_manager.buffer
     vector_manager.reconfigure(50)
 
-    vector_manager.request(cmd="RESET")
-    vector_manager.request(cmd="INCR", data=[2])
+    vector_manager.request(cmd=RESET)
+    vector_manager.request(cmd=INCR, data=[2])
     vector_manager.sync()
     assert np.all(buffer[:50] == 2)
 
-    vector_manager.request(cmd="INCR", data=[2], worker_id=7)
-    vector_manager.request(cmd="INCR", data=[2], worker_id=8)
-    vector_manager.request(cmd="DECR", data=[10], worker_id=9)
+    vector_manager.request(cmd=INCR, data=[2], worker_id=7)
+    vector_manager.request(cmd=INCR, data=[2], worker_id=8)
+    vector_manager.request(cmd=DECR, data=[10], worker_id=9)
     vector_manager.sync()
     assert np.all(buffer[7:10] == np.array([4, 4, -8]))
 
@@ -118,23 +124,23 @@ def test_reconfigure():
     buffer = vector_manager.buffer
     vector_manager.reconfigure(10)
 
-    vector_manager.request(cmd="RESET")
-    vector_manager.request(cmd="INCR", data=[1])
-    vector_manager.request(cmd="INCR", data=[1])
-    vector_manager.request(cmd="INCR", data=[1])
+    vector_manager.request(cmd=RESET)
+    vector_manager.request(cmd=INCR, data=[1])
+    vector_manager.request(cmd=INCR, data=[1])
+    vector_manager.request(cmd=INCR, data=[1])
     vector_manager.sync()
     assert np.all(buffer[:10] == 3)
 
     vector_manager.reconfigure(60)
-    vector_manager.request(cmd="RESET")
-    vector_manager.request(cmd="INCR", data=[1])
-    vector_manager.request(cmd="INCR", data=[1])
+    vector_manager.request(cmd=RESET)
+    vector_manager.request(cmd=INCR, data=[1])
+    vector_manager.request(cmd=INCR, data=[1])
     vector_manager.sync()
     assert np.all(buffer[:60] == 2)
 
     vector_manager.reconfigure(20)
-    vector_manager.request(cmd="RESET")
-    vector_manager.request(cmd="DECR", data=[1])
+    vector_manager.request(cmd=RESET)
+    vector_manager.request(cmd=DECR, data=[1])
     vector_manager.sync()
     assert np.all(buffer[:20] == -1)
     assert np.all(buffer[20:60] == 2)
@@ -144,20 +150,22 @@ def test_reconfigure():
 def test_run_loop():
     vector_manager = _TestVector()
     buffer = vector_manager.buffer
-    vector_manager.reconfigure(10)
+    num_workers = 3
+    vector_manager.reconfigure(num_workers)
 
-    vector_manager.request(cmd="RESET")
-    vector_manager.request(cmd="RUN_LOOP")
+    vector_manager.request(cmd=RESET)
+    vector_manager.start_loop()
     time.sleep(0.9)
-    vector_manager.request(cmd="STOP_LOOP")
+    vector_manager.stop_loop()
     vector_manager.sync()
-    assert np.all(buffer[:10] == 2)
 
-    vector_manager.request(cmd="RESET")
-    vector_manager.request(cmd="RUN_LOOP")
+    assert np.all(buffer[:num_workers] == 2)
+
+    vector_manager.request(cmd=RESET)
+    vector_manager.start_loop()
     time.sleep(1.6)
-    vector_manager.request(cmd="STOP_LOOP")
+    vector_manager.stop_loop()
     vector_manager.sync()
-    assert np.all(buffer[:10] == 4)
+    assert np.all(buffer[:num_workers] == 4)
 
     vector_manager.terminate()
