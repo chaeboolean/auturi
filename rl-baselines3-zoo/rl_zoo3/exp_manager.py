@@ -176,7 +176,7 @@ class ExperimentManager:
         )
         self.params_path = f"{self.save_path}/{self.env_name}"
 
-    def setup_experiment(self) -> Optional[Tuple[BaseAlgorithm, Dict[str, Any]]]:
+    def setup_experiment(self, num_envs: Optional[int] = None, n_steps: Optional[int] = None) -> Optional[Tuple[BaseAlgorithm, Dict[str, Any]]]:
         """
         Read hyperparameters, pre-process them (create schedules, wrappers, callbacks, action noise objects)
         create the environment and possibly the model.
@@ -192,9 +192,11 @@ class ExperimentManager:
         # Create env to have access to action space for action noise
         n_envs = 1 if self.algo == "ars" or self.optimize_hyperparameters else self.n_envs
         
-        n_envs = getattr(self, "auturi_num_envs", n_envs)
+        n_envs = num_envs if num_envs is not None else n_envs
         env = self.create_envs(n_envs, no_log=True)
         self._hyperparams = self._preprocess_action_noise(hyperparams, saved_hyperparams, env)
+        if n_steps is not None:
+            self._hyperparams["n_steps"] = n_steps
 
         if self.continue_training:
             model = self._load_pretrained_agent(self._hyperparams, env)

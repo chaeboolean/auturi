@@ -58,11 +58,13 @@ class MetricRecorder:
             res = AuturiMetric(num_traj=total_num_traj, elapsed=total_time)
 
         elif stat == "median":
-            sorted_time = sorted([(_metric.elapsed,_metric.num_traj)  for _metric in records_])
+            sorted_time = sorted(
+                [(_metric.elapsed, _metric.num_traj) for _metric in records_]
+            )
             print("Collected Metric: ", sorted_time)
             median_elem = sorted_time[len(sorted_time) // 2]
             res = AuturiMetric(num_traj=median_elem[1], elapsed=median_elem[0])
-        
+
         else:
             raise NotImplementedError
 

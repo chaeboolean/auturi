@@ -78,8 +78,10 @@ class SB3PolicyAdapter(AuturiPolicy):
         if isinstance(self.action_space, gym.spaces.Discrete):
             actions = np.expand_dims(actions, -1)
 
-        artifacts = np.array([_to_cpu_numpy(values).flatten()[0], _to_cpu_numpy(log_probs)[0]])
- 
+        artifacts = np.array(
+            [_to_cpu_numpy(values).flatten()[0], _to_cpu_numpy(log_probs)[0]]
+        )
+
         end_time = time.perf_counter()
         self.time_ms.append(end_time - start_time)
 
