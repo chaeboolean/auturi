@@ -4,9 +4,6 @@ import gym
 import numpy as np
 
 from auturi.executor.environment import AuturiEnv
-from auturi.logger import get_logger
-
-logger = get_logger()
 
 
 class SB3LocalRolloutBuffer:

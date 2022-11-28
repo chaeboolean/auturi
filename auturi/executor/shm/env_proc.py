@@ -79,6 +79,7 @@ class SHMEnvProc(SHMProcLoopMixin):
         self.reply(cmd)
 
     def _step_loop_once(self, is_first: bool) -> None:
+        # call env.reset first
         if is_first:
             assert np.all(self._get_env_state() == EnvStateEnum.STOPPED)
 
@@ -87,6 +88,7 @@ class SHMEnvProc(SHMProcLoopMixin):
             self.insert_obs_buffer(obs)
             self._set_env_state(EnvStateEnum.STEP_DONE)
 
+        # wait until POLICY_DONE, and then call env.step again
         elif np.all(self._get_env_state() == EnvStateEnum.POLICY_DONE):
             action, artifacts_list = self.get_actions()
             obs = self.env.step(action, artifacts_list)

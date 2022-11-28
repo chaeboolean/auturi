@@ -23,6 +23,7 @@ class SHMPolicyProc(SHMProcLoopMixin):
         self.policy_kwargs = policy_kwargs
 
         self.base_buffer_attr = base_buffer_attr
+        self._env_mask_for_actor = None
 
         super().__init__(worker_id, cmd_attr_dict=cmd_attr_dict)
 
@@ -48,7 +49,6 @@ class SHMPolicyProc(SHMProcLoopMixin):
             self.base_buffer_attr["artifact"]
         )
 
-        self._env_mask = None
         SHMProcLoopMixin.initialize(self)
 
     @property
@@ -65,8 +65,8 @@ class SHMPolicyProc(SHMProcLoopMixin):
         self.reply(cmd)
 
     def set_env_handler(self, cmd: int, data_list: List[int]):
-        self._env_mask = slice(data_list[0], data_list[0] + data_list[1])
-        self._logger.debug(f"set visible mask ({self._env_mask})")
+        self._env_mask_for_actor = slice(data_list[0], data_list[0] + data_list[1])
+        self._logger.debug(f"set visible mask ({self._env_mask_for_actor})")
         self.reply(cmd)
 
     def _set_state(self, state):
@@ -76,14 +76,16 @@ class SHMPolicyProc(SHMProcLoopMixin):
         return self.policy_buffer[self.worker_id]
 
     def get_visible_buffer(self, buffer: np.ndarray):
-        assert self._env_mask is not None
-        return buffer[self._env_mask]
+        assert self._env_mask_for_actor is not None
+        return buffer[self._env_mask_for_actor]
 
     def _step_loop_once(self, is_first: bool) -> None:
+        # set state to READY
         if is_first:
             self._logger.debug("Enter the loop")
             self._set_state(PolicyStateEnum.READY)
 
+        # if env.step() is done, call compute_actions
         elif self._get_state() == PolicyStateEnum.ASSIGNED:
             assigned_envs = np.where(
                 self.get_visible_buffer(self.env_buffer)
@@ -91,10 +93,6 @@ class SHMPolicyProc(SHMProcLoopMixin):
             )[0]
 
             assert len(assigned_envs) > 0
-            self._logger.debug(
-                f"policy.step: given={assigned_envs}, env_buffer={self.env_buffer}, visible={(np.where(self.env_buffer == 30))[0]}, set fn={(np.where(self.env_buffer[self._env_mask] == 30))[0]},, mask={self._env_mask}"
-            )
-
             obs = self.get_visible_buffer(self.obs_buffer)[assigned_envs]
             actions, artifacts = self.policy.compute_actions(obs, n_steps=1)
 
@@ -107,4 +105,5 @@ class SHMPolicyProc(SHMProcLoopMixin):
                 assigned_envs
             ] = EnvStateEnum.POLICY_DONE
 
+            # set policy buffer ASSIGNED -> READY
             self._set_state(PolicyStateEnum.READY)

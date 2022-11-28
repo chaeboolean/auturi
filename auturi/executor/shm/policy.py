@@ -31,12 +31,15 @@ class SHMVectorPolicy(AuturiVectorPolicy, SHMVectorLoopMixin):
             policy_attr,
         ) = util._create_buffer_from_sample(sample_=1, max_num=MAX_POLICY)
         self.base_buffer_attr["policy"] = policy_attr
+        self.policy_buffer.fill(PolicyStateEnum.STOPPED)
 
         self.__env, self.env_buffer = util.set_shm_from_attr(
             self.base_buffer_attr["env"]
         )
+
+        # Env visibility is limited for each actor
         self._env_offset = -1  # should be intialized when reconfigure
-        self._env_mask = None
+        self._env_mask_for_actor = None
 
         AuturiVectorPolicy.__init__(self, actor_id, policy_cls, policy_kwargs)
         SHMVectorLoopMixin.__init__(self, MAX_POLICY)
@@ -47,7 +50,7 @@ class SHMVectorPolicy(AuturiVectorPolicy, SHMVectorLoopMixin):
 
     def reconfigure(self, config: ParallelizationConfig, model: nn.Module) -> None:
         self._env_offset = config.compute_index_for_actor("num_envs", self.actor_id)
-        self._env_mask = slice(
+        self._env_mask_for_actor = slice(
             self._env_offset, self._env_offset + config[self.actor_id].num_envs
         )
 
@@ -76,7 +79,6 @@ class SHMVectorPolicy(AuturiVectorPolicy, SHMVectorLoopMixin):
         self._logger.info(f"Join worker={worker_id} pid={worker.pid}")
 
     def terminate(self):
-        # self.request(EnvCommand.TERM)
         SHMVectorLoopMixin.terminate_all_workers(self)
         self.__policy.unlink()
 
@@ -88,13 +90,11 @@ class SHMVectorPolicy(AuturiVectorPolicy, SHMVectorLoopMixin):
 
     def compute_actions(self, env_ids: List[int], n_steps: int) -> object:
         while True:
-            # assert np.all(self._get_env_state()[env_ids] == EnvStateEnum.QUEUED)
-
             assert np.all(self._get_env_state()[env_ids] == EnvStateEnum.QUEUED)
             ready_policies = np.where(self._get_state() == PolicyStateEnum.READY)[0]
 
             if len(ready_policies) > 0:
-                policy_id = int(ready_policies[0])  # pick any
+                policy_id = int(ready_policies[0])  # pick any available policy
 
                 self._logger.debug(f"assigned {env_ids} to pol{policy_id}")
                 self._get_env_state()[env_ids] = policy_id + EnvStateEnum.POLICY_OFFSET
@@ -102,7 +102,7 @@ class SHMVectorPolicy(AuturiVectorPolicy, SHMVectorLoopMixin):
                 return None
 
     def _get_env_state(self):
-        return self.env_buffer[self._env_mask]
+        return self.env_buffer[self._env_mask_for_actor]
 
     def _get_state(self):
         return self.policy_buffer[: self.num_workers]
@@ -112,8 +112,10 @@ class SHMVectorPolicy(AuturiVectorPolicy, SHMVectorLoopMixin):
         SHMVectorLoopMixin.start_loop(self)
 
     def stop_loop(self):
+        # wait until env-assigned policy finish compute_actions()
         util.wait(
             lambda: np.all(self._get_state() == PolicyStateEnum.READY),
-            lambda: self._logger.debug("Wait to stop loop.."),
+            lambda: self._logger.warning("Wait to stop loop.."),
         )
+        self.policy_buffer.fill(PolicyStateEnum.STOPPED)
         SHMVectorLoopMixin.stop_loop(self)

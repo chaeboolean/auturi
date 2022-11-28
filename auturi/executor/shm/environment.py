@@ -10,7 +10,7 @@ from auturi.executor.shm.mp_mixin import SHMVectorLoopMixin
 from auturi.executor.shm.util import WaitingQueue, set_shm_from_attr, wait
 from auturi.tuner import ParallelizationConfig
 
-MAX_ENV_NUM = 128
+MAX_ENV_NUM = 64
 
 
 class SHMParallelEnv(AuturiVectorEnv, SHMVectorLoopMixin):
@@ -129,7 +129,6 @@ class SHMParallelEnv(AuturiVectorEnv, SHMVectorLoopMixin):
             self.request(EnvCommand.AGGREGATE, worker_id=wid, data=[prev_ctr, cur_ctr])
             prev_ctr = cur_ctr
 
-        self._logger.info("Requested Rollouts. ")
         self.sync()
         self._logger.info("Sync after Rollouts. ")
 
@@ -142,7 +141,7 @@ class SHMParallelEnv(AuturiVectorEnv, SHMVectorLoopMixin):
         assert len(action) == self.num_envs
 
         cond_ = lambda: np.all(self._get_env_state() != EnvStateEnum.STOPPED)
-        wait(cond_, lambda: self._logger("wait for step"))
+        wait(cond_, lambda: self._logger.warning("wait for step"))
 
         np.copyto(self.action_buffer[: self.num_envs, :], action)
         self._set_env_state(EnvStateEnum.POLICY_DONE)

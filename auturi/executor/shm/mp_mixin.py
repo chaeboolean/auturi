@@ -86,7 +86,7 @@ class SHMVectorMixin:
             self._command_buffer[self._slice(worker_id), BUFFER_COMMAND_IDX]
             == SHMCommand.CMD_DONE
         )
-        timeout_fn = lambda: self._logger.debug(
+        timeout_fn = lambda: self._logger.warning(
             f" waiting those=> {np.where(self._command_buffer[self._slice(worker_id), BUFFER_COMMAND_IDX] != SHMCommand.CMD_DONE)[0]}\n"
             + f" they are=> {self._command_buffer[np.where(self._command_buffer[self._slice(worker_id), BUFFER_COMMAND_IDX] != SHMCommand.CMD_DONE)[0], 0]}\n"
         )
@@ -168,7 +168,7 @@ class SHMProcMixin(mp.Process):
         """Set CMD_DONE sign to command buffer to notify its parent."""
         # assert that currently written command equals to given command.
         cond_ = lambda: self._command_buffer[self.worker_id, BUFFER_COMMAND_IDX] == cmd
-        wait(cond_, lambda: self._logger.debug(f" waiting for {cmd}"))
+        wait(cond_, lambda: self._logger.warning(f" waiting for {cmd}"))
 
         # set CMD_DONE
         self._command_buffer[self.worker_id, BUFFER_COMMAND_IDX] = SHMCommand.CMD_DONE
@@ -220,11 +220,12 @@ class SHMProcLoopMixin(SHMProcMixin):
         self.cmd_handler[SHMCommand.INIT_LOOP] = self._loop_handler
 
     def _loop_handler(self, cmd: int, data_list: List[int]):
-        """Unlike other handler, it watches if STOP_LOOP request have come."""
+        """Execute this function from when INIT_LOOP is set until STOP_LOOP is set."""
         self._step_loop_once(is_first=True)
         while True:
             cmd, _ = self._get_command()
             if cmd == SHMCommand.STOP_LOOP:
+                # wait until _check_loop_done is True
                 if self._check_loop_done():
                     self._stop_loop_handler()
                     break

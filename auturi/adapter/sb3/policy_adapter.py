@@ -7,9 +7,6 @@ import torch as th
 from stable_baselines3.common.utils import obs_as_tensor
 
 from auturi.executor.policy import AuturiPolicy
-from auturi.logger import get_logger
-
-logger = get_logger()
 
 
 def _to_cpu_numpy(tensor):
@@ -46,13 +43,9 @@ class SB3PolicyAdapter(AuturiPolicy):
         #     with open("policy.txt", "w") as f:
         #         print(self.time_ms)
         self.time_ms.clear()
-        logger.debug(f"PolicyAdapter: Load policy start....")
-
         self.policy_model = self.policy_model_cls.load(self.model_path, device=device)
         self.policy_model.set_training_mode(False)
         self.device = device
-
-        logger.debug(f"PolicyAdapter: Load policy finish...")
 
     def _to_sample_noise(self, n_steps):
         return (

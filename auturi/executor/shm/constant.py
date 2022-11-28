@@ -27,7 +27,6 @@ class PolicyStateEnum:
     STOPPED = 0
     READY = 14
     ASSIGNED = 15
-    LOADING_MODEL = 16
 
 
 class EnvStateEnum:
