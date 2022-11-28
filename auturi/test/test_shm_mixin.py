@@ -21,8 +21,8 @@ class _TestVector(SHMVectorLoopMixin):
         super().__init__(max_workers=100)
 
     @property
-    def identifier(self):
-        return "TestVector: "
+    def proc_name(self):
+        return "TestVector"
 
     @property
     def num_workers(self):
@@ -32,7 +32,7 @@ class _TestVector(SHMVectorLoopMixin):
         old_num_wokers = len(self.workers)
         for worker_id in range(old_num_wokers):
             if worker_id >= num_workers:
-                self.teardown_handler(worker_id, self.workers[worker_id])
+                self.terminate_single_worker(worker_id, self.workers[worker_id])
                 del self.workers[worker_id]
 
         for worker_id in range(old_num_wokers, num_workers):
@@ -45,7 +45,7 @@ class _TestVector(SHMVectorLoopMixin):
         self.sync()
 
     def terminate(self):
-        super().terminate_all_worker(workers=list(self.workers.values()))
+        super().terminate_all_workers(workers=list(self.workers.values()))
         self.__buffer.unlink()
 
 
@@ -55,15 +55,15 @@ class _TestProc(SHMProcLoopMixin):
         super().__init__(worker_id, cmd_attr_dict)
 
     @property
-    def identifier(self):
-        return "TestProc: "
+    def proc_name(self):
+        return "TestProc"
 
     def initialize(self) -> None:
         self.__buffer = shm.SharedMemory(self.buf_name)
         self.buffer = np.ndarray((80,), np.int32, buffer=self.__buffer.buf)
         super().initialize()
 
-    def set_handler_for_command(self) -> None:
+    def set_command_handlers(self) -> None:
         self.cmd_handler[RESET] = self._reset_handler
         self.cmd_handler[INCR] = self._incr_handler
         self.cmd_handler[DECR] = self._decr_handler

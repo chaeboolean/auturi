@@ -6,9 +6,6 @@ from auturi.executor.shm.constant import ActorCommand
 from auturi.executor.shm.environment import SHMParallelEnv
 from auturi.executor.shm.mp_mixin import SHMProcMixin
 from auturi.executor.shm.policy import SHMVectorPolicy
-from auturi.logger import get_logger
-
-logger = get_logger()
 
 
 class SHMActor(AuturiActor):
@@ -73,10 +70,10 @@ class SHMActorProc(SHMProcMixin):
         SHMProcMixin.initialize(self)
 
     @property
-    def identifier(self):
-        return f"Actor(aid={self.actor_id}): "
+    def proc_name(self):
+        return f"Actor(aid={self.actor_id})"
 
-    def set_handler_for_command(self):
+    def set_command_handlers(self):
         self.cmd_handler[ActorCommand.RECONFIGURE] = self.reconfigure_handler
         self.cmd_handler[ActorCommand.RUN] = self.run_handler
 
@@ -84,7 +81,7 @@ class SHMActorProc(SHMProcMixin):
         config = util.convert_buffer_to_config(self._command_buffer[:, 1:])
         self.actor.reconfigure(config, model=None)
         self.actor.sync()
-        logger.debug(self.identifier + "Reconfigure.. sync done")
+        self._logger.debug("Reconfigure.. sync done")
         self.reply(cmd)
 
     def run_handler(self, cmd: int, _):
@@ -93,7 +90,7 @@ class SHMActorProc(SHMProcMixin):
         self.reply(cmd)
 
     def _term_handler(self, cmd: int, data_list: List[int]):
-        logger.info(self.identifier + "Got Term signal....")
+        self._logger.info("Got Term signal....")
         self.actor.vector_envs.terminate()
         self.actor.vector_policy.terminate()
         super()._term_handler(cmd, data_list)

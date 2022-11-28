@@ -6,21 +6,25 @@ import gym
 import numpy as np
 
 from auturi.executor.environment import AuturiEnv
-from auturi.logger import get_logger
 from auturi.tuner import ActorConfig, ParallelizationConfig
-
-logger = get_logger()
 
 ALIGN_BYTES = 64
 
 
-def wait(cond_, debug_msg, timeout=2):
-    last_timeout = time.time()
+def wait(
+    cond_: Callable[[], bool], timeout_fn: Callable[[], None] = None, timeout: int = 2
+):
+    """Wait until given cond_ predicates returns True.
+
+    Execute timeout_fn for very timeout seconds.
+
+    """
+    timeout_fn = timeout_fn if timeout_fn is not None else lambda: None
+    last_ts = time.time()
     while not cond_():
-        if time.time() - last_timeout > timeout:
-            msg = debug_msg() if callable(debug_msg) else debug_msg
-            logger.info(msg)
-            last_timeout = time.time()
+        if time.time() - last_ts > timeout:
+            timeout_fn()
+            last_ts = time.time()
 
 
 def align(num_envs, dummy_arr):

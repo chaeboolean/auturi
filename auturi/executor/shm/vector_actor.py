@@ -9,10 +9,8 @@ from auturi.executor.shm.actor import SHMActorProc
 from auturi.executor.shm.constant import ActorCommand
 from auturi.executor.shm.mp_mixin import SHMVectorMixin
 from auturi.executor.vector_actor import AuturiVectorActor
-from auturi.logger import get_logger
 from auturi.tuner import AuturiMetric, AuturiTuner, ParallelizationConfig
 
-logger = get_logger()
 MAX_ACTOR = 128
 MAX_ACTOR_DATA = 7
 
@@ -34,29 +32,21 @@ class SHMVectorActor(AuturiVectorActor, SHMVectorMixin):
             self.rollout_buffer_attr,
         ) = util.create_shm_from_env(env_fns[0], len(env_fns), self.rollout_size)
 
-        logger.debug("==================================")
-        for key, val in self.base_buffers.items():
-            logger.debug(f"{key}: shape={val[1].shape}")
-
-        for key, val in self.rollout_buffers.items():
-            logger.debug(f"Rollout_{key}: shape={val[1].shape}")
-
-        logger.debug("==================================\n\n")
-
         self.env_fns = env_fns
         self.policy_cls = policy_cls
         self.policy_kwargs = policy_kwargs
 
         AuturiVectorActor.__init__(self, env_fns, policy_cls, policy_kwargs, tuner)
         SHMVectorMixin.__init__(self, MAX_ACTOR, MAX_ACTOR_DATA)
+        self._print_buffers()
 
     # for debugging message
     @property
-    def identifier(self):
-        return "VectorActor: "
+    def proc_name(self):
+        return "VectorActor"
 
     def reconfigure(self, config: ParallelizationConfig, model: nn.Module):
-        logger.info(f"\n\n============================reconfigure {config}\n")
+        self._logger.info(f"\n\n============================reconfigure {config}\n")
         util.copy_config_to_buffer(config, self._command_buffer[:, 1:])
         super().reconfigure(config, model)
         self.sync()
@@ -83,15 +73,14 @@ class SHMVectorActor(AuturiVectorActor, SHMVectorMixin):
             worker_id=worker_id,
         )
 
-        logger.info(self.identifier + f"RECONFIGURE({worker_id})")
+        self._logger.info(f"RECONFIGURE({worker_id})")
 
     def _terminate_worker(self, worker_id: int, worker: SHMActorProc) -> None:
-        super().teardown_handler(worker_id, worker)
-        logger.info(self.identifier + f"Join worker={worker_id} pid={worker.pid}")
+        SHMVectorMixin.terminate_single_worker(self, worker_id, worker)
+        self._logger.info(f"Join worker={worker_id} pid={worker.pid}")
 
     def terminate(self):
-        workers = [p for _, p in self.workers()]
-        SHMVectorMixin.terminate_all_worker(self, workers)
+        SHMVectorMixin.terminate_all_workers(self)
 
         # Responsible to unlink created shm buffer
         for _, tuple_ in self.base_buffers.items():
@@ -102,9 +91,9 @@ class SHMVectorActor(AuturiVectorActor, SHMVectorMixin):
             tuple_[0].unlink()
 
     def _run(self) -> Tuple[Dict[str, Any], AuturiMetric]:
-        logger.info(f"\n\n============================RUN\n")
+        self._logger.info(f"\n\n============================RUN\n")
         self.request(ActorCommand.RUN)
-        logger.debug(self.identifier + "Set command RUN")
+        self._logger.debug("Set command RUN")
 
         start_time = time.perf_counter()
         self.sync()
@@ -123,3 +112,13 @@ class SHMVectorActor(AuturiVectorActor, SHMVectorMixin):
             ret_dict[key] = tuple_[1]
 
         return ret_dict
+
+    def _print_buffers(self):
+        self._logger.debug("==================================")
+        for key, val in self.base_buffers.items():
+            self._logger.debug(f"{key}: shape={val[1].shape}")
+
+        for key, val in self.rollout_buffers.items():
+            self._logger.debug(f"Rollout_{key}: shape={val[1].shape}")
+
+        self._logger.debug("==================================\n\n")

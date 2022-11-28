@@ -8,10 +8,8 @@ from auturi.executor.policy import AuturiPolicy, AuturiVectorPolicy
 from auturi.executor.shm.constant import EnvStateEnum, PolicyCommand, PolicyStateEnum
 from auturi.executor.shm.mp_mixin import SHMVectorLoopMixin
 from auturi.executor.shm.policy_proc import SHMPolicyProc
-from auturi.logger import get_logger
 from auturi.tuner.config import ParallelizationConfig
 
-logger = get_logger()
 MAX_POLICY = 16
 
 
@@ -44,8 +42,8 @@ class SHMVectorPolicy(AuturiVectorPolicy, SHMVectorLoopMixin):
         SHMVectorLoopMixin.__init__(self, MAX_POLICY)
 
     @property
-    def identifier(self):
-        return f"VectorPolicy(aid={self.actor_id}): "
+    def proc_name(self):
+        return f"VectorPolicy(aid={self.actor_id})"
 
     def reconfigure(self, config: ParallelizationConfig, model: nn.Module) -> None:
         self._env_offset = config.compute_index_for_actor("num_envs", self.actor_id)
@@ -74,13 +72,12 @@ class SHMVectorPolicy(AuturiVectorPolicy, SHMVectorLoopMixin):
         )
 
     def _terminate_worker(self, worker_id: int, worker: SHMPolicyProc) -> None:
-        super().teardown_handler(worker_id, worker)
-        logger.info(self.identifier + f"Join worker={worker_id} pid={worker.pid}")
+        super().terminate_single_worker(worker_id, worker)
+        self._logger.info(f"Join worker={worker_id} pid={worker.pid}")
 
     def terminate(self):
         # self.request(EnvCommand.TERM)
-        workers = [p for _, p in self.workers()]
-        SHMVectorLoopMixin.terminate_all_worker(self, workers)
+        SHMVectorLoopMixin.terminate_all_workers(self)
         self.__policy.unlink()
 
     def _load_policy_model(
@@ -99,7 +96,7 @@ class SHMVectorPolicy(AuturiVectorPolicy, SHMVectorLoopMixin):
             if len(ready_policies) > 0:
                 policy_id = int(ready_policies[0])  # pick any
 
-                logger.debug(self.identifier + f"assigned {env_ids} to pol{policy_id}")
+                self._logger.debug(f"assigned {env_ids} to pol{policy_id}")
                 self._get_env_state()[env_ids] = policy_id + EnvStateEnum.POLICY_OFFSET
                 self._get_state()[policy_id] = PolicyStateEnum.ASSIGNED
                 return None
@@ -117,6 +114,6 @@ class SHMVectorPolicy(AuturiVectorPolicy, SHMVectorLoopMixin):
     def stop_loop(self):
         util.wait(
             lambda: np.all(self._get_state() == PolicyStateEnum.READY),
-            self.identifier + "Wait to stop loop..",
+            lambda: self._logger.debug("Wait to stop loop.."),
         )
         SHMVectorLoopMixin.stop_loop(self)

@@ -8,10 +8,7 @@ from auturi.executor.shm.constant import EnvCommand
 from auturi.executor.shm.env_proc import EnvStateEnum, SHMEnvProc
 from auturi.executor.shm.mp_mixin import SHMVectorLoopMixin
 from auturi.executor.shm.util import WaitingQueue, set_shm_from_attr, wait
-from auturi.logger import get_logger
 from auturi.tuner import ParallelizationConfig
-
-logger = get_logger()
 
 MAX_ENV_NUM = 128
 
@@ -19,7 +16,7 @@ MAX_ENV_NUM = 128
 class SHMParallelEnv(AuturiVectorEnv, SHMVectorLoopMixin):
     """SHMParallelVectorEnv
 
-    Uses Python Shared memory implementation as backend
+    Uses Python Shared memory implementation as backend.
 
     """
 
@@ -49,8 +46,8 @@ class SHMParallelEnv(AuturiVectorEnv, SHMVectorLoopMixin):
         SHMVectorLoopMixin.__init__(self, MAX_ENV_NUM)
 
     @property
-    def identifier(self):
-        return f"VectorEnv(aid={self.actor_id}): "
+    def proc_name(self):
+        return f"VectorEnv(aid={self.actor_id})"
 
     def reconfigure(self, config: ParallelizationConfig):
         # set offset
@@ -76,13 +73,11 @@ class SHMParallelEnv(AuturiVectorEnv, SHMVectorLoopMixin):
         pass
 
     def _terminate_worker(self, worker_id: int, worker: SHMEnvProc) -> None:
-        super().teardown_handler(worker_id, worker)
-        logger.info(self.identifier + f"Join worker={worker_id} pid={worker.pid}")
+        SHMVectorLoopMixin.terminate_single_worker(self, worker_id, worker)
+        self._logger.info(f"Join worker={worker_id} pid={worker.pid}")
 
     def terminate(self):
-        # self.request(EnvCommand.TERM)
-        workers = [p for _, p in self.workers()]
-        SHMVectorLoopMixin.terminate_all_worker(self, workers)
+        SHMVectorLoopMixin.terminate_all_workers(self)
 
     # Internally call reset.
     def start_loop(self):
@@ -134,7 +129,10 @@ class SHMParallelEnv(AuturiVectorEnv, SHMVectorLoopMixin):
             self.request(EnvCommand.AGGREGATE, worker_id=wid, data=[prev_ctr, cur_ctr])
             prev_ctr = cur_ctr
 
+        self._logger.info("Requested Rollouts. ")
         self.sync()
+        self._logger.info("Sync after Rollouts. ")
+
         return None
 
     def step(self, action: np.ndarray, action_artifacts: List[np.ndarray]):
@@ -144,15 +142,15 @@ class SHMParallelEnv(AuturiVectorEnv, SHMVectorLoopMixin):
         assert len(action) == self.num_envs
 
         cond_ = lambda: np.all(self._get_env_state() != EnvStateEnum.STOPPED)
-        wait(cond_, self.identifier + "wait for step")
+        wait(cond_, lambda: self._logger("wait for step"))
 
         np.copyto(self.action_buffer[: self.num_envs, :], action)
         self._set_env_state(EnvStateEnum.POLICY_DONE)
 
-        logger.debug(self.identifier + f"single_state={self._get_env_state()}")
+        self._logger.debug(f"single_state={self._get_env_state()}")
 
         _ = self.poll()  # no need to output
-        logger.debug(self.identifier + f"step poll finish")
+        self._logger.debug(f"step poll finish")
 
         return np.copy(self.obs_buffer)
 

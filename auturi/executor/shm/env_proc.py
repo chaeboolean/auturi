@@ -6,9 +6,6 @@ from auturi.executor.environment import AuturiSerialEnv
 from auturi.executor.shm.constant import EnvCommand, EnvStateEnum
 from auturi.executor.shm.mp_mixin import SHMProcLoopMixin
 from auturi.executor.shm.util import set_shm_from_attr, wait
-from auturi.logger import get_logger
-
-logger = get_logger()
 
 
 class SHMEnvProc(SHMProcLoopMixin):
@@ -48,10 +45,10 @@ class SHMEnvProc(SHMProcLoopMixin):
         SHMProcLoopMixin.initialize(self)
 
     @property
-    def identifier(self):
-        return f"EnvProc(aid={self.actor_id}, wid={self.worker_id}): "
+    def proc_name(self):
+        return f"EnvProc(aid={self.actor_id}, wid={self.worker_id})"
 
-    def set_handler_for_command(self):
+    def set_command_handlers(self):
         self.cmd_handler[EnvCommand.RESET] = self.reset_handler
         self.cmd_handler[EnvCommand.SEED] = self.seed_handler
         self.cmd_handler[EnvCommand.SET_ENV] = self.set_visible_env_handler
@@ -85,7 +82,7 @@ class SHMEnvProc(SHMProcLoopMixin):
         if is_first:
             assert np.all(self._get_env_state() == EnvStateEnum.STOPPED)
 
-            logger.debug(self.identifier + "Entered the loop.")
+            self._logger.debug("Entered the loop.")
             obs = self.env.reset()
             self.insert_obs_buffer(obs)
             self._set_env_state(EnvStateEnum.STEP_DONE)
@@ -93,9 +90,7 @@ class SHMEnvProc(SHMProcLoopMixin):
         elif np.all(self._get_env_state() == EnvStateEnum.POLICY_DONE):
             action, artifacts_list = self.get_actions()
             obs = self.env.step(action, artifacts_list)
-            logger.debug(
-                self.identifier + f"env.step({action.flat[0]}) => {obs.flat[0]}"
-            )
+            self._logger.debug(f"env.step({action.flat[0]}) => {obs.flat[0]}")
 
             self.insert_obs_buffer(obs)
             self._set_env_state(EnvStateEnum.STEP_DONE)
@@ -123,9 +118,6 @@ class SHMEnvProc(SHMProcLoopMixin):
         )
 
     def _stop_loop_handler(self):
-        # env which policy worker is allocated should finish its env.step()
-        # msg_fn = lambda: self.identifier + f"Wait to set STOP sign. env_state={self._get_env_state()}"
-        # wait(cond_, msg_fn)
         self._set_env_state(EnvStateEnum.STOPPED)
-        logger.debug(self.identifier + f"Escaped the loop.")
+        self._logger.debug("Escaped the loop.")
         super()._stop_loop_handler()
