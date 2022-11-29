@@ -50,7 +50,7 @@ from rl_zoo3.hyperparams_opt import HYPERPARAMS_SAMPLER
 from rl_zoo3.utils import ALGOS, get_callback_list, get_latest_run_id, get_wrapper_class, linear_schedule
 
 # Add football
-import auturi.benchmarks.tasks.football as football
+import auturi.benchmarks.tasks.football_kaggle as football
 
 class ExperimentManager:
     """
