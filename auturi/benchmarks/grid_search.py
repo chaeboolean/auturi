@@ -64,8 +64,8 @@ def run(args):
     try:
         while True:
             executor.run(None)
-            executor.terminate()
     except StopIteration:
+        executor.terminate()
         print("search finish....")
         print(tuner.tuning_results)
 

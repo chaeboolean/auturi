@@ -1,11 +1,10 @@
 import argparse
 import functools
 
-from rl_zoo3.exp_manager import ExperimentManager
-
 from auturi.adapter.sb3 import wrap_sb3_OnPolicyAlgorithm
 from auturi.tuner import ActorConfig, ParallelizationConfig, create_tuner_with_config
 from auturi.tuner.grid_search import GridSearchTuner
+from rl_zoo3.exp_manager import ExperimentManager
 
 
 def create_sb3_algorithm(args, num_iteration, vec_cls="dummy"):
