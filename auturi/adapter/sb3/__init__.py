@@ -7,7 +7,9 @@ from auturi.adapter.sb3.env_adapter import SB3EnvAdapter
 from auturi.adapter.sb3.policy_adapter import SB3PolicyAdapter
 from auturi.executor import create_executor
 
-SAVE_MODEL_PATH = "/home/ooffordable/auturi/log/model_save.pt"
+import pathlib
+
+SAVE_MODEL_PATH = pathlib.Path().resolve() / "model_save.pt"
 
 
 def _collect_rollouts_auturi(sb3_algo, env, callback, rollout_buffer, n_rollout_steps):

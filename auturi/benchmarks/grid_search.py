@@ -1,11 +1,12 @@
 import argparse
 import functools
 
-from auturi.benchmarks.tasks.atari_wrap import AtariEnvWrapper, AtariPolicyWrapper
+from auturi.benchmarks.tasks.circuit_wrap import CircuitEnvWrapper, CircuitPolicyWrapper
 from auturi.benchmarks.tasks.football_wrap import (
     FootballEnvWrapper,
     FootballPolicyWrapper,
 )
+from auturi.benchmarks.tasks.sb3_wrap import SB3EnvWrapper, SB3PolicyWrapper
 from auturi.executor import create_executor
 from auturi.tuner import ActorConfig, ParallelizationConfig, create_tuner_with_config
 from auturi.tuner.grid_search import GridSearchTuner
@@ -29,23 +30,37 @@ def make_naive_tuner(args):
 
 
 def make_grid_search_tuner(args):
+    validator = None
+    if args.env == "circuit":
+        validator = lambda x: x.policy_device != "cpu"
+
     return GridSearchTuner(
         args.num_envs,
         args.num_envs,
         max_policy_num=8,
         num_collect=args.num_collect,
         num_iterate=args.num_iteration,
+        validator=validator,
     )
 
 
 def prepare_task(env_name, num_envs):
+
     if env_name == "football":
         task_id = "academy_3_vs_1_with_keeper"
         env_cls, policy_cls = FootballEnvWrapper, FootballPolicyWrapper
 
+    elif env_name == "circuit":
+        task_id = None
+        env_cls, policy_cls = CircuitEnvWrapper, CircuitPolicyWrapper
+
     elif env_name == "atari":
         task_id = "PongNoFrameskip-v4"
-        env_cls, policy_cls = AtariEnvWrapper, AtariPolicyWrapper
+        env_cls, policy_cls = SB3EnvWrapper, SB3PolicyWrapper
+
+    elif env_name == "cheetah":
+        task_id = "HalfCheetah-v3"
+        env_cls, policy_cls = SB3EnvWrapper, SB3PolicyWrapper
 
     env_fns = [
         functools.partial(create_envs, env_cls, task_id, rank)
@@ -72,7 +87,9 @@ def run(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--env", type=str, choices=["football", "circuit", "atari"])
+    parser.add_argument(
+        "--env", type=str, choices=["football", "circuit", "atari", "cheetah"]
+    )
 
     parser.add_argument(
         "--num-iteration", type=int, default=3, help="number of trials for each config."

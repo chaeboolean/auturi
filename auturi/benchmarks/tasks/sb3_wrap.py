@@ -1,11 +1,12 @@
 from collections import defaultdict
 
+import gym
 import numpy as np
 import torch
 from auturi.executor.environment import AuturiEnv
 from auturi.executor.policy import AuturiPolicy
 from stable_baselines3.common.env_util import make_atari_env
-from stable_baselines3.common.policies import ActorCriticCnnPolicy
+from stable_baselines3.common.policies import ActorCriticCnnPolicy, ActorCriticPolicy
 from stable_baselines3.common.vec_env import (
     DummyVecEnv,
     VecFrameStack,
@@ -13,21 +14,35 @@ from stable_baselines3.common.vec_env import (
 )
 
 
-def make_env(task_id: str):
-    env = make_atari_env(task_id, n_envs=1, vec_env_cls=DummyVecEnv)
-    env = VecFrameStack(env, 4)
-    return VecTransposeImage(env)
+def make_env(task_id: str, is_atari_: bool):
+    if is_atari_:
+        env = make_atari_env(task_id, n_envs=1, vec_env_cls=DummyVecEnv)
+        env = VecFrameStack(env, 4)
+        return VecTransposeImage(env)
+    else:
+        env_fn = lambda: gym.make(task_id)
+        return DummyVecEnv([env_fn])
 
 
 def _to_cpu_numpy(tensor):
     return tensor.detach().to("cpu").numpy()
 
 
-class AtariEnvWrapper(AuturiEnv):
+def is_atari(env_id: str) -> bool:
+    try:
+        entry_point = gym.envs.registry.env_specs[env_id].entry_point
+        return "AtariEnv" in str(entry_point)
+    except KeyError as e:
+        return False
+
+
+class SB3EnvWrapper(AuturiEnv):
     def __init__(self, task_id: str, rank: int):
         self.rank = rank
-        self.env = make_env(task_id)
+        is_atari_ = is_atari(task_id)
+        self.env = make_env(task_id, is_atari_)
 
+        # self.env = gym.make("HalfCheetah-v3")
         self.setup_dummy_env(self.env)
         self.storage = defaultdict(list)
         self.artifacts_samples = [np.array([1.1, 1.4])]
@@ -61,11 +76,13 @@ class AtariEnvWrapper(AuturiEnv):
         self.env.close()
 
 
-class AtariPolicyWrapper(AuturiPolicy):
+class SB3PolicyWrapper(AuturiPolicy):
     def __init__(self, task_id: str, idx: int):
         self.device = "cpu"
-        dummy_env = make_env(task_id)
-        self.policy = ActorCriticCnnPolicy(
+        self.is_atari_ = is_atari(task_id)
+        dummy_env = make_env(task_id, self.is_atari_)
+        policy_cls = ActorCriticCnnPolicy if self.is_atari_ else ActorCriticPolicy
+        self.policy = policy_cls(
             dummy_env.observation_space, dummy_env.action_space, lambda _: 0.001
         )
         self.policy.set_training_mode(False)
@@ -78,10 +95,14 @@ class AtariPolicyWrapper(AuturiPolicy):
     def compute_actions(self, obs, n_steps):
         obs = torch.from_numpy(obs).to(self.device)
         actions, values, log_probs = self.policy(obs)
-        actions = np.expand_dims(_to_cpu_numpy(actions), -1)
+        actions = _to_cpu_numpy(actions)
         artifacts = np.array(
             [_to_cpu_numpy(values).flatten()[0], _to_cpu_numpy(log_probs)[0]]
         )
+        if self.is_atari_:
+            actions = np.expand_dims(actions, -1)
+
+        print("action shape=", actions.shape)
         return actions, [artifacts]
 
     def terminate(self):
