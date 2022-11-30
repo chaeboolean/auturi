@@ -3,6 +3,7 @@ from collections import defaultdict
 import gym
 import numpy as np
 import torch
+from auturi.benchmarks.tasks.finrl_wrap import make_finrl_env
 from auturi.executor.environment import AuturiEnv
 from auturi.executor.policy import AuturiPolicy
 from stable_baselines3.common.env_util import make_atari_env
@@ -19,6 +20,10 @@ def make_env(task_id: str, is_atari_: bool):
         env = make_atari_env(task_id, n_envs=1, vec_env_cls=DummyVecEnv)
         env = VecFrameStack(env, 4)
         return VecTransposeImage(env)
+
+    elif task_id in ["stock", "portfolio"]:
+        return make_finrl_env(task_id)
+
     else:
         env_fn = lambda: gym.make(task_id)
         return DummyVecEnv([env_fn])
