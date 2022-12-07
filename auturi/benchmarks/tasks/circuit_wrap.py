@@ -5,14 +5,14 @@ from collections import defaultdict
 import cloudpickle
 import gym
 import numpy as np
-import tensorflow as tf
-from auturi.executor.environment import AuturiEnv
-from auturi.executor.policy import AuturiPolicy
 from circuit_training.environment.environment import create_circuit_environment
 from circuit_training.model import model
 from tf_agents.agents.ppo.ppo_policy import PPOPolicy
 from tf_agents.train.utils import spec_utils
 from tf_agents.utils import nest_utils
+
+from auturi.executor.environment import AuturiEnv
+from auturi.executor.policy import AuturiPolicy
 
 root = pathlib.Path(__file__).absolute().parent
 

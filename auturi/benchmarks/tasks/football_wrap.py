@@ -2,6 +2,7 @@ from collections import defaultdict
 
 import numpy as np
 import torch
+
 from auturi.benchmarks.tasks.football_hts_rl import Policy as FootballPolicy
 from auturi.benchmarks.tasks.football_hts_rl import make_env
 from auturi.executor.environment import AuturiEnv

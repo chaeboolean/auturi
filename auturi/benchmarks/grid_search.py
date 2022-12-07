@@ -1,7 +1,7 @@
 import argparse
 import functools
 
-from auturi.benchmarks.tasks.circuit_wrap import CircuitEnvWrapper, CircuitPolicyWrapper
+# from auturi.benchmarks.tasks.circuit_wrap import CircuitEnvWrapper, CircuitPolicyWrapper
 from auturi.benchmarks.tasks.football_wrap import (
     FootballEnvWrapper,
     FootballPolicyWrapper,
@@ -50,16 +50,13 @@ def prepare_task(env_name, num_envs):
         task_id = "academy_3_vs_1_with_keeper"
         env_cls, policy_cls = FootballEnvWrapper, FootballPolicyWrapper
 
-    elif env_name == "circuit":
-        task_id = None
-        env_cls, policy_cls = CircuitEnvWrapper, CircuitPolicyWrapper
+    # elif env_name == "circuit":
+    #     task_id = None
+    #     env_cls, policy_cls = CircuitEnvWrapper, CircuitPolicyWrapper
 
-    elif env_name == "atari":
-        task_id = "PongNoFrameskip-v4"
-        env_cls, policy_cls = SB3EnvWrapper, SB3PolicyWrapper
-
-    elif env_name == "cheetah":
-        task_id = "HalfCheetah-v3"
+    else:
+        atari_name = "PongNoFrameskip-v4"
+        task_id = atari_name if env_name == "atari" else env_name
         env_cls, policy_cls = SB3EnvWrapper, SB3PolicyWrapper
 
     env_fns = [
@@ -87,9 +84,7 @@ def run(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--env", type=str, choices=["football", "circuit", "atari", "cheetah"]
-    )
+    parser.add_argument("--env", type=str)
 
     parser.add_argument(
         "--num-iteration", type=int, default=3, help="number of trials for each config."

@@ -1,4 +1,5 @@
 import functools
+import pathlib
 
 from stable_baselines3.common.on_policy_algorithm import OnPolicyAlgorithm
 
@@ -7,9 +8,7 @@ from auturi.adapter.sb3.env_adapter import SB3EnvAdapter
 from auturi.adapter.sb3.policy_adapter import SB3PolicyAdapter
 from auturi.executor import create_executor
 
-import pathlib
-
-SAVE_MODEL_PATH = pathlib.Path().resolve() / "model_save.pt"
+SAVE_MODEL_PATH = pathlib.Path(__file__).parent.resolve() / "model_save.pt"
 
 
 def _collect_rollouts_auturi(sb3_algo, env, callback, rollout_buffer, n_rollout_steps):

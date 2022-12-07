@@ -11,6 +11,7 @@ from finrl.meta.preprocessor.preprocessors import FeatureEngineer, data_split
 from finrl.meta.preprocessor.yahoodownloader import YahooDownloader
 
 SAVE_ASSET_PATH = pathlib.Path(__file__).parent.resolve() / "finrl_assets"
+pathlib.Path(SAVE_ASSET_PATH).mkdir(parents=True, exist_ok=True)
 
 
 def get_stock_env():
@@ -158,12 +159,3 @@ def make_finrl_env(task_id):
         return get_stock_env()
     elif task_id == "portfolio":
         return get_portfolio_env()
-
-
-env = get_portfolio_env()
-
-print(env.observation_space.shape)
-print(env.reset().shape)
-print(env.action_space.shape)
-action = env.action_space.sample()
-print(env.step([action]))

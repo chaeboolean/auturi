@@ -3,9 +3,6 @@ from collections import defaultdict
 import gym
 import numpy as np
 import torch
-from auturi.benchmarks.tasks.finrl_wrap import make_finrl_env
-from auturi.executor.environment import AuturiEnv
-from auturi.executor.policy import AuturiPolicy
 from stable_baselines3.common.env_util import make_atari_env
 from stable_baselines3.common.policies import ActorCriticCnnPolicy, ActorCriticPolicy
 from stable_baselines3.common.vec_env import (
@@ -13,6 +10,10 @@ from stable_baselines3.common.vec_env import (
     VecFrameStack,
     VecTransposeImage,
 )
+
+from auturi.benchmarks.tasks.finrl_wrap import make_finrl_env
+from auturi.executor.environment import AuturiEnv
+from auturi.executor.policy import AuturiPolicy
 
 
 def make_env(task_id: str, is_atari_: bool):
@@ -53,6 +54,8 @@ class SB3EnvWrapper(AuturiEnv):
         self.artifacts_samples = [np.array([1.1, 1.4])]
 
     def step(self, action, artifacts):
+        # if action.ndim == self.action_space.sample().ndim:
+        #     action = np.expand_dims(action, -1)
         if not isinstance(action, np.ndarray):
             action = np.array([action])
 
@@ -107,7 +110,6 @@ class SB3PolicyWrapper(AuturiPolicy):
         if self.is_atari_:
             actions = np.expand_dims(actions, -1)
 
-        print("action shape=", actions.shape)
         return actions, [artifacts]
 
     def terminate(self):
