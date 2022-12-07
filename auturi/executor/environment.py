@@ -8,6 +8,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import numpy as np
 
+import auturi.executor.typing as types
 from auturi.executor.vector_utils import VectorMixin, aggregate_partial
 from auturi.tuner.config import ParallelizationConfig
 
@@ -22,7 +23,7 @@ class AuturiEnv(metaclass=ABCMeta):
 
     @abstractmethod
     def step(
-        self, action: np.ndarray, action_artifacts: List[np.ndarray]
+        self, action: np.ndarray, action_artifacts: types.ActionArtifacts
     ) -> np.ndarray:
         """Same functionality with gym.Env.step().
 
@@ -78,7 +79,7 @@ class AuturiSerialEnv(AuturiEnv):
         self.envs = dict()  # maps env_id and AuturiEnv instance
         self.start_idx, self.end_idx, self.num_envs = -1, -1, 0
 
-    def set_working_env(self, start_idx: int, num_envs: int):
+    def set_working_env(self, start_idx: int, num_envs: int) -> None:
         """Initialize environments with env_ids."""
         self.start_idx = start_idx
         self.end_idx = start_idx + num_envs
@@ -96,16 +97,18 @@ class AuturiSerialEnv(AuturiEnv):
         for eid, env in self._working_envs():
             env.seed(seed + eid)
 
-    def terminate(self):
+    def terminate(self) -> None:
         for _, env in self.envs.items():
             env.terminate()
 
-    def step(self, actions: np.ndarray, action_artifacts: List[np.ndarray]):
+    def step(
+        self, actions: np.ndarray, action_artifacts: types.ActionArtifacts
+    ) -> np.ndarray:
         """Broadcast actions to each env.
 
         Args:
             actions (np.ndarray): shape should be [self.num_envs, *self.action_space.shape]
-            action_artifacts (List[np.ndarray]): Each element' first dim should be equal to self.num_envs
+            action_artifacts (types.ActionArtifacts): Each element' first dim should be equal to self.num_envs
 
         Returns:
             np.npdarray: shape should be [self.num_envs, *self.observation_space.shape]
@@ -118,7 +121,7 @@ class AuturiSerialEnv(AuturiEnv):
 
         return np.stack(obs_list)
 
-    def aggregate_rollouts(self) -> Dict[str, Any]:
+    def aggregate_rollouts(self) -> Dict[str, np.ndarray]:
         rollouts_from_each_env = [
             env.aggregate_rollouts() for _, env in self._working_envs()
         ]
@@ -185,31 +188,32 @@ class AuturiVectorEnv(VectorMixin, AuturiEnv, metaclass=ABCMeta):
         worker: AuturiSerialEnv,
         start_idx: int,
         num_env_serial: int,
-    ) -> Any:
+    ) -> None:
         """Set working envs for all SerialEnvs."""
         raise NotImplementedError
 
     @abstractmethod
-    def poll(self) -> Any:
+    def poll(self) -> types.ObservationRefs:
         """Wait until at least 'self.batch_size' environments finish their step.
 
         Returns:
-            Any: IDs or references of 'self.batch_size' number of environments that finished their steps the fastest.
+            ObservationRefs: numpy array or references of 'self.batch_size'
+                number of environments that finished their steps the fastest.
 
         """
         raise NotImplementedError
 
     @abstractmethod
-    def send_actions(self, action_ref: Any) -> None:
+    def send_actions(self, action_ref: types.ActionRefs) -> None:
         """Register action reference to remote env."""
         raise NotImplementedError
 
     @abstractmethod
-    def start_loop(self):
+    def start_loop(self) -> None:
         """Setup before running collection loop."""
         raise NotImplementedError
 
     @abstractmethod
-    def stop_loop(self):
+    def stop_loop(self) -> None:
         """Stop loop, but not terminate entirely."""
         raise NotImplementedError

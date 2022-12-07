@@ -2,10 +2,11 @@ from typing import List
 
 import numpy as np
 
+import auturi.executor.typing as types
 from auturi.executor.environment import AuturiSerialEnv
 from auturi.executor.shm.constant import EnvCommand, EnvStateEnum
 from auturi.executor.shm.mp_mixin import SHMProcLoopMixin
-from auturi.executor.shm.util import set_shm_from_attr, wait
+from auturi.executor.shm.util import set_shm_from_attr
 
 
 class SHMEnvProc(SHMProcLoopMixin):
@@ -45,29 +46,29 @@ class SHMEnvProc(SHMProcLoopMixin):
         SHMProcLoopMixin.initialize(self)
 
     @property
-    def proc_name(self):
+    def proc_name(self) -> str:
         return f"EnvProc(aid={self.actor_id}, wid={self.worker_id})"
 
-    def set_command_handlers(self):
+    def set_command_handlers(self) -> None:
         self.cmd_handler[EnvCommand.RESET] = self.reset_handler
         self.cmd_handler[EnvCommand.SEED] = self.seed_handler
         self.cmd_handler[EnvCommand.SET_ENV] = self.set_visible_env_handler
         self.cmd_handler[EnvCommand.AGGREGATE] = self.aggregate_handler
 
-    def reset_handler(self, cmd: int, data_list: List[int]):
+    def reset_handler(self, cmd: int, data_list: List[int]) -> None:
         obs = self.env.reset()
         self.insert_obs_buffer(obs)
         self.reply(cmd)
 
-    def seed_handler(self, cmd: int, data_list: List[int]):
+    def seed_handler(self, cmd: int, data_list: List[int]) -> None:
         self.env.seed(data_list[0])
         self.reply(cmd)
 
-    def set_visible_env_handler(self, cmd: int, data_list: List[int]):
+    def set_visible_env_handler(self, cmd: int, data_list: List[int]) -> None:
         self.env.set_working_env(data_list[0], data_list[1])
         self.reply(cmd)
 
-    def aggregate_handler(self, cmd: int, data_list: List[int]):
+    def aggregate_handler(self, cmd: int, data_list: List[int]) -> None:
         local_rollouts = self.env.aggregate_rollouts()
 
         for key_, trajectories in local_rollouts.items():
@@ -97,18 +98,18 @@ class SHMEnvProc(SHMProcLoopMixin):
             self.insert_obs_buffer(obs)
             self._set_env_state(EnvStateEnum.STEP_DONE)
 
-    def insert_obs_buffer(self, obs):
+    def insert_obs_buffer(self, obs) -> None:
         self.obs_buffer[self.env.start_idx : self.env.end_idx, :] = obs
 
-    def get_actions(self):
+    def get_actions(self) -> types.ActionTuple:
         action = self.action_buffer[self.env.start_idx : self.env.end_idx, :]
         artifacts = self.artifact_buffer[self.env.start_idx : self.env.end_idx, :]
         return action, [artifacts]
 
-    def _set_env_state(self, state):
+    def _set_env_state(self, state) -> None:
         self.env_buffer[self.env.start_idx : self.env.end_idx] = state
 
-    def _get_env_state(self):
+    def _get_env_state(self) -> np.ndarray:
         return self.env_buffer[self.env.start_idx : self.env.end_idx]
 
     def _check_loop_done(self) -> bool:
@@ -119,7 +120,7 @@ class SHMEnvProc(SHMProcLoopMixin):
             )
         )
 
-    def _stop_loop_handler(self):
+    def _stop_loop_handler(self) -> bool:
         self._set_env_state(EnvStateEnum.STOPPED)
         self._logger.debug("Escaped the loop.")
         super()._stop_loop_handler()

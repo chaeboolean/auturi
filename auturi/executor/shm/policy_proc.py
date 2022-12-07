@@ -52,30 +52,33 @@ class SHMPolicyProc(SHMProcLoopMixin):
         SHMProcLoopMixin.initialize(self)
 
     @property
-    def proc_name(self):
+    def proc_name(self) -> str:
         return f"PolicyProc(aid={self.actor_id}, wid={self.worker_id})"
 
-    def set_command_handlers(self):
+    def set_command_handlers(self) -> None:
         self.cmd_handler[PolicyCommand.LOAD_MODEL] = self.load_model_handler
         self.cmd_handler[PolicyCommand.SET_POLICY_ENV] = self.set_env_handler
 
-    def load_model_handler(self, cmd: int, data_list: List[int]):
+    def load_model_handler(self, cmd: int, data_list: List[int]) -> None:
         # cannot receive model parameters via SHM for now.
         self.policy.load_model(None, util.int_to_device(data_list[0]))
         self.reply(cmd)
 
-    def set_env_handler(self, cmd: int, data_list: List[int]):
+    def set_env_handler(self, cmd: int, data_list: List[int]) -> None:
         self._env_mask_for_actor = slice(data_list[0], data_list[0] + data_list[1])
         self._logger.debug(f"set visible mask ({self._env_mask_for_actor})")
         self.reply(cmd)
 
-    def _set_state(self, state):
+    def _set_state(self, state) -> None:
+        """Set policy_buffer state."""
         self.policy_buffer[self.worker_id] = state
 
-    def _get_state(self):
+    def _get_state(self) -> int:
+        """Return policy_buffer state."""
         return self.policy_buffer[self.worker_id]
 
-    def get_visible_buffer(self, buffer: np.ndarray):
+    def get_visible_buffer(self, buffer: np.ndarray) -> np.ndarray:
+        """Return visibil region of given buffer."""
         assert self._env_mask_for_actor is not None
         return buffer[self._env_mask_for_actor]
 
@@ -87,12 +90,16 @@ class SHMPolicyProc(SHMProcLoopMixin):
 
         # if env.step() is done, call compute_actions
         elif self._get_state() == PolicyStateEnum.ASSIGNED:
+
+            # get ids of assigned environments
             assigned_envs = np.where(
                 self.get_visible_buffer(self.env_buffer)
                 == self.worker_id + EnvStateEnum.POLICY_OFFSET
             )[0]
 
             assert len(assigned_envs) > 0
+
+            # read observations from assigned env ids
             obs = self.get_visible_buffer(self.obs_buffer)[assigned_envs]
             actions, artifacts = self.policy.compute_actions(obs, n_steps=1)
 

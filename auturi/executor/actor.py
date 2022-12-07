@@ -3,8 +3,8 @@ from abc import ABCMeta, abstractmethod
 from typing import Any, Callable, Dict, List, Tuple
 
 import ray
-import torch.nn as nn
 
+import auturi.executor.typing as types
 from auturi.executor.environment import AuturiEnv, AuturiVectorEnv
 from auturi.executor.policy import AuturiVectorPolicy
 from auturi.tuner import AuturiMetric, ParallelizationConfig
@@ -44,7 +44,7 @@ class AuturiActor(metaclass=ABCMeta):
         raise NotImplementedError
 
     # synchronous
-    def reconfigure(self, config: ParallelizationConfig, model: nn.Module):
+    def reconfigure(self, config: ParallelizationConfig, model: types.PolicyModel):
         """Reconfigure the number of envs and policies according to a given config found by AuturiTuner."""
 
         # Adjust Policy
@@ -64,10 +64,12 @@ class AuturiActor(metaclass=ABCMeta):
         n_steps = 0
         start_time = time.perf_counter()
         while n_steps < self.num_collect:
-            obs_refs = self.vector_envs.poll()
+            obs_refs: types.ObservationRefs = self.vector_envs.poll()
             # print("obs_res -> ", ray.get(list(obs_refs.values()))[0].shape)
 
-            action_refs = self.vector_policy.compute_actions(obs_refs, n_steps)
+            action_refs: types.ActionRefs = self.vector_policy.compute_actions(
+                obs_refs, n_steps
+            )
             # print("action_refs -> ", ray.get(action_refs)[0].shape)
 
             self.vector_envs.send_actions(action_refs)

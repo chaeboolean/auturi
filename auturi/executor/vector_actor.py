@@ -1,9 +1,8 @@
 from abc import ABCMeta, abstractmethod
 from typing import Any, Callable, Dict, List, Tuple
 
-import torch.nn as nn
-
 from auturi.executor.environment import AuturiEnv
+from auturi.executor.typing import PolicyModel
 from auturi.executor.vector_utils import VectorMixin
 from auturi.tuner import AuturiMetric, AuturiTuner, ParallelizationConfig
 
@@ -51,7 +50,7 @@ class AuturiVectorActor(VectorMixin, metaclass=ABCMeta):
         """
         self.reconfigure_workers(config.num_actors, config, model=model)
 
-    def run(self, model: nn.Module) -> Tuple[Dict[str, Any], AuturiMetric]:
+    def run(self, model: PolicyModel) -> Tuple[Dict[str, Any], AuturiMetric]:
         """Run collection loop with `tuner.num_collect` iterations, and return experience trajectories and AuturiMetric."""
         next_config = self.tuner.next()
         self.reconfigure(next_config, model)

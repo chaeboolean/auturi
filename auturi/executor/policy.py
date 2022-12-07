@@ -7,15 +7,15 @@ from abc import ABCMeta, abstractmethod
 from typing import Any, Dict
 
 import numpy as np
-import torch.nn as nn
 
+from auturi.executor.typing import ActionTuple, PolicyModel
 from auturi.executor.vector_utils import VectorMixin
 from auturi.tuner.config import ParallelizationConfig
 
 
 class AuturiPolicy(metaclass=ABCMeta):
     @abstractmethod
-    def compute_actions(self, obs: np.ndarray, n_steps: int = -1):
+    def compute_actions(self, obs: np.ndarray, n_steps: int = -1) -> ActionTuple:
         """Compute action with the policy network.
 
         obs dimension always should be [num_envs, *observation_space.shape]
@@ -23,7 +23,7 @@ class AuturiPolicy(metaclass=ABCMeta):
         raise NotImplementedError
 
     @abstractmethod
-    def load_model(self, model: nn.Module, device: str):
+    def load_model(self, model: PolicyModel, device: str) -> None:
         """Load policy network on the specified device."""
         raise NotImplementedError
 
@@ -48,13 +48,13 @@ class AuturiVectorPolicy(VectorMixin, AuturiPolicy, metaclass=ABCMeta):
         self.policy_cls = policy_cls
         self.policy_kwargs = policy_kwargs
 
-        super().__init__()
+        VectorMixin.__init__(self)
 
     @property
     def num_policies(self):
         return self.num_workers
 
-    def reconfigure(self, config: ParallelizationConfig, model: nn.Module):
+    def reconfigure(self, config: ParallelizationConfig, model: PolicyModel):
         """Add remote policy if needed."""
 
         # set number of currently working workers
@@ -69,13 +69,13 @@ class AuturiVectorPolicy(VectorMixin, AuturiPolicy, metaclass=ABCMeta):
 
     @abstractmethod
     def _load_policy_model(
-        self, idx: int, policy: AuturiPolicy, model: nn.Module, device: str
+        self, idx: int, policy: AuturiPolicy, model: PolicyModel, device: str
     ) -> None:
         """Load the latest trained model parameter on the specified device for the policy."""
         raise NotImplementedError
 
     # TODO: No need to imple.
-    def load_model(self, model: nn.Module, device: str):
+    def load_model(self, model: PolicyModel, device: str):
         pass
 
     @abstractmethod

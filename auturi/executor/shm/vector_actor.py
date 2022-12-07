@@ -1,9 +1,10 @@
 import time
 from typing import Any, Callable, Dict, List, Tuple
 
-import torch.nn as nn
+import numpy as np
 
 import auturi.executor.shm.util as util
+import auturi.executor.typing as types
 from auturi.executor.environment import AuturiEnv
 from auturi.executor.shm.actor import SHMActorProc
 from auturi.executor.shm.constant import ActorCommand
@@ -42,10 +43,12 @@ class SHMVectorActor(AuturiVectorActor, SHMVectorMixin):
 
     # for debugging message
     @property
-    def proc_name(self):
+    def proc_name(self) -> str:
         return "VectorActor"
 
-    def reconfigure(self, config: ParallelizationConfig, model: nn.Module):
+    def reconfigure(
+        self, config: ParallelizationConfig, model: types.PolicyModel
+    ) -> None:
         self._logger.info(f"\n\n============================reconfigure {config}\n")
         util.copy_config_to_buffer(config, self._command_buffer[:, 1:])
         super().reconfigure(config, model)
@@ -66,8 +69,8 @@ class SHMVectorActor(AuturiVectorActor, SHMVectorMixin):
         worker_id: int,
         worker: SHMActorProc,
         config: ParallelizationConfig,  # do not need
-        model: nn.Module,  # do not need
-    ):
+        model: types.PolicyModel,  # do not need
+    ) -> None:
         self.request(
             ActorCommand.RECONFIGURE,
             worker_id=worker_id,
@@ -79,7 +82,7 @@ class SHMVectorActor(AuturiVectorActor, SHMVectorMixin):
         SHMVectorMixin.terminate_single_worker(self, worker_id, worker)
         self._logger.info(f"Join worker={worker_id} pid={worker.pid}")
 
-    def terminate(self):
+    def terminate(self) -> None:
         SHMVectorMixin.terminate_all_workers(self)
 
         # Responsible to unlink created shm buffer
@@ -105,7 +108,7 @@ class SHMVectorActor(AuturiVectorActor, SHMVectorMixin):
             self.rollout_size, end_time - start_time
         )  # TODO: how to measure time of each worker?
 
-    def _aggregate_rollouts(self, num_collect: int):
+    def _aggregate_rollouts(self, num_collect: int) -> Dict[str, np.ndarray]:
         ret_dict = dict()
         for key, tuple_ in self.rollout_buffers.items():
             # ret_dict[key] = tuple_[1][:num_collect, :]
@@ -113,7 +116,7 @@ class SHMVectorActor(AuturiVectorActor, SHMVectorMixin):
 
         return ret_dict
 
-    def _print_buffers(self):
+    def _print_buffers(self) -> None:
         self._logger.debug("==================================")
         for key, val in self.base_buffers.items():
             self._logger.debug(f"{key}: shape={val[1].shape}")

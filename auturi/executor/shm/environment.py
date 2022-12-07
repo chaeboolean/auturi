@@ -3,6 +3,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 import numpy as np
 
+import auturi.executor.typing as types
 from auturi.executor.environment import AuturiVectorEnv
 from auturi.executor.shm.constant import EnvCommand
 from auturi.executor.shm.env_proc import EnvStateEnum, SHMEnvProc
@@ -46,7 +47,7 @@ class SHMParallelEnv(AuturiVectorEnv, SHMVectorLoopMixin):
         SHMVectorLoopMixin.__init__(self, MAX_ENV_NUM)
 
     @property
-    def proc_name(self):
+    def proc_name(self) -> str:
         return f"VectorEnv(aid={self.actor_id})"
 
     def reconfigure(self, config: ParallelizationConfig):
@@ -58,7 +59,7 @@ class SHMParallelEnv(AuturiVectorEnv, SHMVectorLoopMixin):
 
         super().reconfigure(config)
 
-    def _create_worker(self, worker_id: int):
+    def _create_worker(self, worker_id: int) -> SHMEnvProc:
         kwargs = {
             "actor_id": self.actor_id,
             "env_fns": self.env_fns,
@@ -69,44 +70,44 @@ class SHMParallelEnv(AuturiVectorEnv, SHMVectorLoopMixin):
 
     def _reconfigure_worker(
         self, worker_id: int, worker: SHMEnvProc, config: ParallelizationConfig
-    ):
+    ) -> None:
         pass
 
     def _terminate_worker(self, worker_id: int, worker: SHMEnvProc) -> None:
         SHMVectorLoopMixin.terminate_single_worker(self, worker_id, worker)
         self._logger.info(f"Join worker={worker_id} pid={worker.pid}")
 
-    def terminate(self):
+    def terminate(self) -> None:
         SHMVectorLoopMixin.terminate_all_workers(self)
 
     # Internally call reset.
-    def start_loop(self):
+    def start_loop(self) -> None:
         self.env_counter.fill(0)
         self.queue.pop("all")
         assert np.all(self._get_env_state() == EnvStateEnum.STOPPED)
         SHMVectorLoopMixin.start_loop(self)
 
-    def stop_loop(self):
+    def stop_loop(self) -> None:
         # Env states can be STEP_DONE or QUEUED
         SHMVectorLoopMixin.stop_loop(self)
 
-    def reset(self):
+    def reset(self) -> None:
         self.request(EnvCommand.RESET)
 
-    def seed(self, seed):
+    def seed(self, seed) -> None:
         self.request(EnvCommand.SEED, data=[seed])
 
-    def set_working_env(self, worker_id, worker, start_idx, num_env_serial):
+    def set_working_env(self, worker_id, worker, start_idx, num_env_serial) -> None:
         self.request(
             EnvCommand.SET_ENV, worker_id=worker_id, data=[start_idx, num_env_serial]
         )
 
-    def poll(self) -> List[int]:
+    def poll(self) -> types.ObservationRefs:
         while True:
-            new_req = np.where(self._get_env_state() == EnvStateEnum.STEP_DONE)[0]
+            new_done_ids = np.where(self._get_env_state() == EnvStateEnum.STEP_DONE)[0]
 
-            self.queue.insert(new_req)
-            self._set_env_state(EnvStateEnum.QUEUED, mask=new_req)
+            self.queue.insert(new_done_ids)
+            self._set_env_state(EnvStateEnum.QUEUED, mask=new_done_ids)
 
             if self.queue.cnt >= self.batch_size:
                 ret = self.queue.pop(num=self.batch_size)
@@ -114,11 +115,11 @@ class SHMParallelEnv(AuturiVectorEnv, SHMVectorLoopMixin):
                 self.env_counter[ret] += 1
                 return ret
 
-    def send_actions(self, action_ref) -> None:
+    def send_actions(self, action_ref: types.ActionRefs) -> None:
         """SHM Implementation do not need send_actions."""
         pass
 
-    def aggregate_rollouts(self):
+    def aggregate_rollouts(self) -> None:
         acc_ctr = list(itertools.accumulate(self.env_counter))
 
         prev_ctr = self._rollout_offset
@@ -134,7 +135,9 @@ class SHMParallelEnv(AuturiVectorEnv, SHMVectorLoopMixin):
 
         return None
 
-    def step(self, action: np.ndarray, action_artifacts: List[np.ndarray]):
+    def step(
+        self, action: np.ndarray, action_artifacts: types.ActionArtifacts
+    ) -> np.ndarray:
         """For debugging Purpose. Synchronous step wrapper."""
         self.batch_size = self.num_envs
 
@@ -153,12 +156,12 @@ class SHMParallelEnv(AuturiVectorEnv, SHMVectorLoopMixin):
 
         return np.copy(self.obs_buffer)
 
-    def _set_env_state(self, state, mask: Optional[np.ndarray] = None):
+    def _set_env_state(self, state, mask: Optional[np.ndarray] = None) -> None:
         ptr = self._get_env_state()
         if mask is not None:
             ptr[mask] = state
         else:
             ptr.fill(state)
 
-    def _get_env_state(self):
+    def _get_env_state(self) -> np.ndarray:
         return self.env_buffer[self._env_offset : self._env_offset + self.num_envs]

@@ -70,26 +70,26 @@ class SHMActorProc(SHMProcMixin):
         SHMProcMixin.initialize(self)
 
     @property
-    def proc_name(self):
+    def proc_name(self) -> str:
         return f"Actor(aid={self.actor_id})"
 
-    def set_command_handlers(self):
+    def set_command_handlers(self) -> None:
         self.cmd_handler[ActorCommand.RECONFIGURE] = self.reconfigure_handler
         self.cmd_handler[ActorCommand.RUN] = self.run_handler
 
-    def reconfigure_handler(self, cmd: int, _):
+    def reconfigure_handler(self, cmd: int, _) -> None:
         config = util.convert_buffer_to_config(self._command_buffer[:, 1:])
         self.actor.reconfigure(config, model=None)
         self.actor.sync()
         self._logger.debug("Reconfigure.. sync done")
         self.reply(cmd)
 
-    def run_handler(self, cmd: int, _):
+    def run_handler(self, cmd: int, _) -> None:
         self.actor.run()
         self.actor.sync()
         self.reply(cmd)
 
-    def _term_handler(self, cmd: int, data_list: List[int]):
+    def _term_handler(self, cmd: int, data_list: List[int]) -> None:
         self._logger.debug("Got Term signal....")
         self.actor.vector_envs.terminate()
         self.actor.vector_policy.terminate()
