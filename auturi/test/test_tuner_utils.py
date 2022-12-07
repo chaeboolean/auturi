@@ -39,6 +39,21 @@ def test_tuner_config():
         config_1[0] = ActorConfig(num_envs=2, batch_size=2)
 
 
+def test_tuner_method():
+    config = ParallelizationConfig.create(
+        [
+            ActorConfig(num_envs=2, num_parallel=2, num_policy=2, batch_size=1, num_collect=100),
+            ActorConfig(num_envs=2, batch_size=2, num_collect=50),
+        ]
+    )
+    assert config.num_actors == 2
+    assert config.num_policy == 3
+    assert config.num_collect == 150
+
+    assert config.compute_index_for_actor("num_envs", 0) == 0
+    assert config.compute_index_for_actor("num_envs", 1) == 2
+
+
 def test_metric():
     metric = AuturiMetric(10, 2)
 
