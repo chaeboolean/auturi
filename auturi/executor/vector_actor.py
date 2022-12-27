@@ -40,12 +40,12 @@ class AuturiVectorActor(VectorMixin, metaclass=ABCMeta):
     def num_actors(self):
         return self.num_workers
 
-    def reconfigure(self, config: ParallelizationConfig, model: nn.Module):
+    def reconfigure(self, config: ParallelizationConfig, model: PolicyModel):
         """Adjust executor's component according to tuner-given config.
 
         Args:
             config (ParallelizationConfig): Configurations for tuning.
-            model (nn.Module): Policy network for compute next actions.
+            model (PolicyModel): Policy network for compute next actions.
 
         """
         self.reconfigure_workers(config.num_actors, config, model=model)

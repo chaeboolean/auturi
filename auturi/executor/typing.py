@@ -31,4 +31,4 @@ Return type of VectorPolicy's compute_actions method
 Return np.ndarray directly when remote calls are not necessary.
 Else, return None for shm backend or ray.ObjectRef for ray backend.
 """
-ActionRefs = NewType("ActionRefs", Union[np.ndarray, ray.ObjectRef, None])
+ActionRefs = NewType("ActionRefs", Union[ActionTuple, ray.ObjectRef, None])

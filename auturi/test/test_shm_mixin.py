@@ -32,7 +32,7 @@ class _TestVector(SHMVectorLoopMixin):
         old_num_wokers = len(self.workers)
         for worker_id in range(old_num_wokers):
             if worker_id >= num_workers:
-                self.terminate_single_worker(worker_id, self.workers[worker_id])
+                self._terminate_worker(worker_id, self.workers[worker_id])
                 del self.workers[worker_id]
 
         for worker_id in range(old_num_wokers, num_workers):

@@ -9,7 +9,6 @@ from auturi.executor.shm.constant import EnvCommand
 from auturi.executor.shm.env_proc import EnvStateEnum, SHMEnvProc
 from auturi.executor.shm.mp_mixin import SHMVectorLoopMixin
 from auturi.executor.shm.util import WaitingQueue, set_shm_from_attr, wait
-from auturi.tuner import ParallelizationConfig
 
 MAX_ENV_NUM = 64
 
@@ -41,7 +40,6 @@ class SHMParallelEnv(AuturiVectorEnv, SHMVectorLoopMixin):
         self.env_counter = np.zeros(len(env_fns), dtype=np.int32)
 
         # should be intialized when reconfigure
-        self._env_offset, self._rollout_offset = -1, -1
 
         AuturiVectorEnv.__init__(self, actor_id, env_fns)
         SHMVectorLoopMixin.__init__(self, MAX_ENV_NUM)
@@ -49,15 +47,6 @@ class SHMParallelEnv(AuturiVectorEnv, SHMVectorLoopMixin):
     @property
     def proc_name(self) -> str:
         return f"VectorEnv(aid={self.actor_id})"
-
-    def reconfigure(self, config: ParallelizationConfig):
-        # set offset
-        self._env_offset = config.compute_index_for_actor("num_envs", self.actor_id)
-        self._rollout_offset = config.compute_index_for_actor(
-            "num_collect", self.actor_id
-        )
-
-        super().reconfigure(config)
 
     def _create_worker(self, worker_id: int) -> SHMEnvProc:
         kwargs = {
@@ -68,17 +57,13 @@ class SHMParallelEnv(AuturiVectorEnv, SHMVectorLoopMixin):
         }
         return self.init_proc(worker_id, SHMEnvProc, kwargs)
 
-    def _reconfigure_worker(
-        self, worker_id: int, worker: SHMEnvProc, config: ParallelizationConfig
-    ) -> None:
-        pass
-
-    def _terminate_worker(self, worker_id: int, worker: SHMEnvProc) -> None:
-        SHMVectorLoopMixin.terminate_single_worker(self, worker_id, worker)
-        self._logger.info(f"Join worker={worker_id} pid={worker.pid}")
-
-    def terminate(self) -> None:
-        SHMVectorLoopMixin.terminate_all_workers(self)
+    def _reconfigure_worker(self, worker_id: int, worker: SHMEnvProc) -> None:
+        start_idx = self._env_offset + self.num_env_serial * worker_id
+        self.request(
+            EnvCommand.SET_ENV,
+            worker_id=worker_id,
+            data=[start_idx, self.num_env_serial],
+        )
 
     # Internally call reset.
     def start_loop(self) -> None:
@@ -96,11 +81,6 @@ class SHMParallelEnv(AuturiVectorEnv, SHMVectorLoopMixin):
 
     def seed(self, seed) -> None:
         self.request(EnvCommand.SEED, data=[seed])
-
-    def set_working_env(self, worker_id, worker, start_idx, num_env_serial) -> None:
-        self.request(
-            EnvCommand.SET_ENV, worker_id=worker_id, data=[start_idx, num_env_serial]
-        )
 
     def poll(self) -> types.ObservationRefs:
         while True:
@@ -165,3 +145,6 @@ class SHMParallelEnv(AuturiVectorEnv, SHMVectorLoopMixin):
 
     def _get_env_state(self) -> np.ndarray:
         return self.env_buffer[self._env_offset : self._env_offset + self.num_envs]
+
+    def terminate(self):
+        SHMVectorLoopMixin.terminate(self)

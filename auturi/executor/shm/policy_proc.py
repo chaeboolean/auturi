@@ -56,16 +56,11 @@ class SHMPolicyProc(SHMProcLoopMixin):
         return f"PolicyProc(aid={self.actor_id}, wid={self.worker_id})"
 
     def set_command_handlers(self) -> None:
-        self.cmd_handler[PolicyCommand.LOAD_MODEL] = self.load_model_handler
-        self.cmd_handler[PolicyCommand.SET_POLICY_ENV] = self.set_env_handler
+        self.cmd_handler[PolicyCommand.SET_POLICY] = self.set_policy_handler
 
-    def load_model_handler(self, cmd: int, data_list: List[int]) -> None:
-        # cannot receive model parameters via SHM for now.
-        self.policy.load_model(None, util.int_to_device(data_list[0]))
-        self.reply(cmd)
-
-    def set_env_handler(self, cmd: int, data_list: List[int]) -> None:
+    def set_policy_handler(self, cmd: int, data_list: List[int]) -> None:
         self._env_mask_for_actor = slice(data_list[0], data_list[0] + data_list[1])
+        self.policy.load_model(None, util.int_to_device(data_list[2]))
         self._logger.debug(f"set visible mask ({self._env_mask_for_actor})")
         self.reply(cmd)
 

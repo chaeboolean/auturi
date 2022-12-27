@@ -1,3 +1,4 @@
+import math
 from collections import OrderedDict
 from typing import Callable, Dict, List
 
@@ -6,7 +7,7 @@ import ray
 
 import auturi.executor.ray.util as util
 from auturi.executor.environment import AuturiSerialEnv, AuturiVectorEnv
-from auturi.executor.vector_utils import aggregate_partial
+from auturi.executor.vector_utils import VectorMixin, aggregate_partial
 from auturi.tuner.config import ParallelizationConfig
 
 
@@ -28,8 +29,8 @@ class RaySerialEnv(AuturiSerialEnv):
         return super().step(action_for_this_env, my_artifacts)
 
 
-class RayParallelEnv(AuturiVectorEnv):
-    """Implementation of the AuturiVectorEnv for using Ray as a backend.."""
+class RayParallelEnv(AuturiVectorEnv, VectorMixin):
+    """Implementation of the AuturiEnvHandler for using Ray as a backend.."""
 
     def __init__(self, actor_id: int, env_fns: List[Callable]):
         super().__init__(actor_id, env_fns)
@@ -45,15 +46,9 @@ class RayParallelEnv(AuturiVectorEnv):
     def _create_worker(self, worker_id: int):
         return RaySerialEnv.remote(self.actor_id, worker_id, self.env_fns)
 
-    def _reconfigure_worker(
-        self, worker_id: int, worker: RaySerialEnv, config: ParallelizationConfig
-    ):
-        pass
-
-    def set_working_env(
-        self, worker_id: int, worker: RaySerialEnv, start_idx: int, num_env_serial: int
-    ):
-        ref = worker.set_working_env.remote(start_idx, num_env_serial)
+    def _reconfigure_worker(self, worker_id: int, worker: RaySerialEnv):
+        start_idx = self._env_offset + self.num_env_serial * worker_id
+        ref = worker.set_working_env.remote(start_idx, self.num_env_serial)
         self.pending_steps[ref] = worker_id
 
     def _terminate_worker(self, worker_id: int, worker: RaySerialEnv):

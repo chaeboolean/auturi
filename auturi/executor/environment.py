@@ -4,12 +4,12 @@ Typings related to Environment: AuturiEnv, AuturiSerialEnv, AuturiVecEnv.
 """
 import math
 from abc import ABCMeta, abstractmethod
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 import numpy as np
 
 import auturi.executor.typing as types
-from auturi.executor.vector_utils import VectorMixin, aggregate_partial
+from auturi.executor.vector_utils import aggregate_partial
 from auturi.tuner.config import ParallelizationConfig
 
 
@@ -134,62 +134,18 @@ class AuturiSerialEnv(AuturiEnv):
             yield env_id, self.envs[env_id]
 
 
-class AuturiVectorEnv(VectorMixin, AuturiEnv, metaclass=ABCMeta):
+class AuturiEnvHandler(metaclass=ABCMeta):
     def __init__(self, actor_id: int, env_fns: List[Callable]):
+        """Abstraction for handling single or multiple AuturiPolicy.
 
-        self.actor_id = actor_id
-        self.env_fns = env_fns
-        self.batch_size = -1  # should be initialized below
-        self.num_env_serial = 0  # should be initialized be
-
-        # Init with dummy env
-        dummy_env = env_fns[0]()
-        assert isinstance(dummy_env, AuturiEnv)
-        self.setup_dummy_env(dummy_env)
-        dummy_env.terminate()
-
-        super().__init__()
-
-    @property
-    def num_envs(self) -> int:
-        """Return the total number of environments that are currently running."""
-        return self.num_env_serial * self.num_workers
-
-    def reconfigure(self, config: ParallelizationConfig) -> None:
-        """Reconfigure AuturiSerialEnv with the environment-level parallelism specified in the config."""
-
-        actor_config = config[self.actor_id]
-        assert actor_config.num_envs <= len(self.env_fns)
-
-        # number of observations that a policy consumes for computing an action
-        self.batch_size = actor_config.batch_size
-
-        # Set the number of environments that are executed sequentially
-        # = total number of environments // the degree of environment-level parallelism
-        self.num_env_serial = actor_config.num_envs // actor_config.num_parallel
-        self.num_worker_to_poll = math.ceil(self.batch_size / self.num_env_serial)
-
-        assert self.num_worker_to_poll > 0
-
-        # set number of currently working workers
-        self.reconfigure_workers(
-            new_num_workers=actor_config.num_parallel, config=config
-        )
-
-        actor_env_offset = config.compute_index_for_actor("num_envs", self.actor_id)
-        for worker_id, worker in self.workers():
-            start_idx = actor_env_offset + self.num_env_serial * worker_id
-            self.set_working_env(worker_id, worker, start_idx, self.num_env_serial)
+        Args:
+            actor_id (int): Id of parent actor
+            env_fns (List[Callable]): Functions creating Adapter class that inherits AuturiEnv.
+        """
+        pass
 
     @abstractmethod
-    def set_working_env(
-        self,
-        worker_id: int,
-        worker: AuturiSerialEnv,
-        start_idx: int,
-        num_env_serial: int,
-    ) -> None:
-        """Set working envs for all SerialEnvs."""
+    def reconfigure(self, config: ParallelizationConfig):
         raise NotImplementedError
 
     @abstractmethod
@@ -209,11 +165,86 @@ class AuturiVectorEnv(VectorMixin, AuturiEnv, metaclass=ABCMeta):
         raise NotImplementedError
 
     @abstractmethod
-    def start_loop(self) -> None:
-        """Setup before running collection loop."""
+    def aggregate_rollouts(self, to=Optional[np.ndarray]) -> Dict[str, np.ndarray]:
+        """Aggregates rollout results from remote environments."""
         raise NotImplementedError
 
-    @abstractmethod
+    def start_loop(self) -> None:
+        """Setup before running collection loop."""
+        pass
+
     def stop_loop(self) -> None:
         """Stop loop, but not terminate entirely."""
+        pass
+
+    @abstractmethod
+    def terminate(self) -> None:
         raise NotImplementedError
+
+
+class AuturiLocalEnv(AuturiSerialEnv, AuturiEnvHandler):
+    def __init__(self, actor_id, env_fns: List[Callable[[], AuturiEnv]]):
+        serialenv_id = 0
+        AuturiSerialEnv.__init__(self, actor_id, serialenv_id, env_fns)
+        self.last_action = None
+        self.batch_size = -1
+
+    def reconfigure(self, config: ParallelizationConfig) -> None:
+        start_idx = config.compute_index_for_actor("num_envs", self.actor_id)
+        self.batch_size = config[self.actor_id].num_envs
+        self.set_working_env(start_idx, self.batch_size)
+
+    def poll(self) -> np.ndarray:
+        print("poll")
+        if self.last_action is None:
+            return self.reset()
+        else:
+            return self.step(*self.last_action)
+
+    def send_actions(self, action_refs: types.ActionTuple) -> None:
+        self.last_action = action_refs
+
+
+class AuturiVectorEnv(AuturiEnvHandler, metaclass=ABCMeta):
+    def __init__(self, actor_id, env_fns: List[Callable[[], AuturiEnv]]):
+        self.actor_id = actor_id
+        self.env_fns = env_fns
+        self._env_offset, self._rollout_offset, self._num_envs = -1, -1, -1
+        self.batch_size, self.num_env_serial, self.num_worker_to_poll = -1, -1, -1
+
+        dummy_env = env_fns[0]()
+        assert isinstance(dummy_env, AuturiEnv)
+        self.observation_space = dummy_env.observation_space
+        self.action_space = dummy_env.action_space
+        self.metadata = dummy_env.metadata
+        dummy_env.terminate()
+
+    @property
+    def num_envs(self):
+        return self._num_envs
+
+    def reconfigure(self, config: ParallelizationConfig) -> None:
+        """Reconfigure AuturiSerialEnv with the environment-level parallelism specified in the config."""
+
+        self._env_offset = config.compute_index_for_actor("num_envs", self.actor_id)
+        self._rollout_offset = config.compute_index_for_actor(
+            "num_collect", self.actor_id
+        )
+
+        actor_config = config[self.actor_id]
+        self._num_envs = actor_config.num_envs
+
+        assert actor_config.num_envs <= len(self.env_fns)
+
+        # number of observations that a policy consumes for computing an action
+        self.batch_size = actor_config.batch_size
+
+        # Set the number of environments that are executed sequentially
+        # = total number of environments // the degree of environment-level parallelism
+        self.num_env_serial = actor_config.num_envs // actor_config.num_parallel
+        self.num_worker_to_poll = math.ceil(self.batch_size / self.num_env_serial)
+
+        assert self.num_worker_to_poll > 0
+
+        # set number of currently working workers
+        self.reconfigure_workers(new_num_workers=actor_config.num_parallel)

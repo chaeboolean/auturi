@@ -14,8 +14,7 @@ class EnvCommand(SHMCommand):
 
 
 class PolicyCommand(SHMCommand):
-    LOAD_MODEL = 14
-    SET_POLICY_ENV = 15
+    SET_POLICY = 15
 
 
 class ActorCommand(SHMCommand):

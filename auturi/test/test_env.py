@@ -1,7 +1,7 @@
 import numpy as np
 
 import auturi.test.utils as utils
-from auturi.executor.environment import AuturiSerialEnv, AuturiVectorEnv
+from auturi.executor.environment import AuturiEnvHandler, AuturiSerialEnv
 from auturi.executor.ray import RayParallelEnv
 from auturi.test.shm_utils import SHMParallelEnvTester
 from auturi.tuner.config import ActorConfig, ParallelizationConfig
@@ -50,11 +50,11 @@ def step_env(test_env, num_envs, num_steps, timeout):
         test_env.set_num_steps(num_steps * num_envs)
 
     with utils.Timeout(min_sec=timeout - 0.5, max_sec=timeout + 0.5):
-        if isinstance(test_env, AuturiVectorEnv):
+        if isinstance(test_env, AuturiEnvHandler):
             test_env.start_loop()
         for step in range(num_steps):
             obs = test_env.step(actions, action_artifacts)
-        if isinstance(test_env, AuturiVectorEnv):
+        if isinstance(test_env, AuturiEnvHandler):
             test_env.stop_loop()
 
     agg_obs = test_env.aggregate_rollouts()["obs"]

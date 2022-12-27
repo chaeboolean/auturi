@@ -4,7 +4,7 @@ import numpy as np
 
 import auturi.executor.shm.util as util
 import auturi.executor.typing as types
-from auturi.executor.policy import AuturiPolicy, AuturiVectorPolicy
+from auturi.executor.policy import AuturiPolicyHandler
 from auturi.executor.shm.constant import EnvStateEnum, PolicyCommand, PolicyStateEnum
 from auturi.executor.shm.mp_mixin import SHMVectorLoopMixin
 from auturi.executor.shm.policy_proc import SHMPolicyProc
@@ -13,7 +13,7 @@ from auturi.tuner.config import ParallelizationConfig
 MAX_POLICY = 16
 
 
-class SHMVectorPolicy(AuturiVectorPolicy, SHMVectorLoopMixin):
+class SHMVectorPolicy(AuturiPolicyHandler, SHMVectorLoopMixin):
     # shm_config, command_buffer
     def __init__(
         self,
@@ -38,11 +38,10 @@ class SHMVectorPolicy(AuturiVectorPolicy, SHMVectorLoopMixin):
         )
 
         # Env visibility is limited for each actor
-        self._env_offset = -1  # should be intialized when reconfigure
         self._env_mask_for_actor = None
 
-        AuturiVectorPolicy.__init__(self, actor_id, policy_cls, policy_kwargs)
-        SHMVectorLoopMixin.__init__(self, MAX_POLICY)
+        AuturiPolicyHandler.__init__(self, actor_id, policy_cls, policy_kwargs)
+        SHMVectorLoopMixin.__init__(self, MAX_POLICY, max_data=3)
 
     @property
     def proc_name(self) -> str:
@@ -53,12 +52,18 @@ class SHMVectorPolicy(AuturiVectorPolicy, SHMVectorLoopMixin):
         self, config: ParallelizationConfig, model: types.PolicyModel
     ) -> None:
         # set the range of visible environment
-        self._env_offset = config.compute_index_for_actor("num_envs", self.actor_id)
-        self._env_mask_for_actor = slice(
-            self._env_offset, self._env_offset + config[self.actor_id].num_envs
-        )
+        env_offset = config.compute_index_for_actor("num_envs", self.actor_id)
+        num_visible_envs = config[self.actor_id].num_envs
+        self._env_mask_for_actor = slice(env_offset, env_offset + num_visible_envs)
 
-        AuturiVectorPolicy.reconfigure(self, config, model)
+        new_num_workers = config[self.actor_id].num_policy
+        device = config[self.actor_id].policy_device
+        self.reconfigure_workers(
+            new_num_workers=new_num_workers,
+            env_offset=env_offset,
+            num_visible_envs=num_visible_envs,
+            device=device,
+        )
 
     def _create_worker(self, worker_id: int) -> SHMPolicyProc:
         kwargs = {
@@ -70,31 +75,23 @@ class SHMVectorPolicy(AuturiVectorPolicy, SHMVectorLoopMixin):
         return self.init_proc(worker_id, SHMPolicyProc, kwargs)
 
     def _reconfigure_worker(
-        self, worker_id: int, worker: SHMPolicyProc, config: ParallelizationConfig
-    ) -> None:
-        self.request(
-            PolicyCommand.SET_POLICY_ENV,
-            worker_id=worker_id,
-            data=[self._env_offset, config[self.actor_id].num_envs],
-        )
-
-    def _terminate_worker(self, worker_id: int, worker: SHMPolicyProc) -> None:
-        super().terminate_single_worker(worker_id, worker)
-        self._logger.info(f"Join worker={worker_id} pid={worker.pid}")
-
-    def terminate(self) -> None:
-        SHMVectorLoopMixin.terminate_all_workers(self)
-        self.__policy.unlink()
-
-    def _load_policy_model(
         self,
         worker_id: int,
-        policy: AuturiPolicy,
-        model: types.PolicyModel,
+        worker: SHMPolicyProc,
+        env_offset: int,
+        num_visible_envs: int,
         device: str,
     ) -> None:
         device_num = util.device_to_int(device)
-        self.request(PolicyCommand.LOAD_MODEL, worker_id=worker_id, data=[device_num])
+        self.request(
+            PolicyCommand.SET_POLICY,
+            worker_id=worker_id,
+            data=[env_offset, num_visible_envs, device_num],
+        )
+
+    def terminate(self) -> None:
+        super().terminate()
+        self.__policy.unlink()
 
     def compute_actions(
         self, env_ids: types.ObservationRefs, n_steps: int

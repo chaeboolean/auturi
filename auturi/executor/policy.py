@@ -8,14 +8,13 @@ from typing import Any, Dict
 
 import numpy as np
 
-from auturi.executor.typing import ActionTuple, PolicyModel
-from auturi.executor.vector_utils import VectorMixin
+import auturi.executor.typing as types
 from auturi.tuner.config import ParallelizationConfig
 
 
 class AuturiPolicy(metaclass=ABCMeta):
     @abstractmethod
-    def compute_actions(self, obs: np.ndarray, n_steps: int = -1) -> ActionTuple:
+    def compute_actions(self, obs: np.ndarray, n_steps: int = -1) -> types.ActionTuple:
         """Compute action with the policy network.
 
         obs dimension always should be [num_envs, *observation_space.shape]
@@ -23,7 +22,7 @@ class AuturiPolicy(metaclass=ABCMeta):
         raise NotImplementedError
 
     @abstractmethod
-    def load_model(self, model: PolicyModel, device: str) -> None:
+    def load_model(self, model: types.PolicyModel, device: str) -> None:
         """Load policy network on the specified device."""
         raise NotImplementedError
 
@@ -32,13 +31,14 @@ class AuturiPolicy(metaclass=ABCMeta):
         raise NotImplementedError
 
 
-class AuturiVectorPolicy(VectorMixin, AuturiPolicy, metaclass=ABCMeta):
+class AuturiPolicyHandler(metaclass=ABCMeta):
     def __init__(
         self, actor_id: int, policy_cls, policy_kwargs: Dict[str, Any] = dict()
     ):
-        """Abstraction for handling multiple AuturiPolicy.
+        """Abstraction for handling single or multiple AuturiPolicy.
 
         Args:
+            actor_id (int): Id of parent actor
             policy_cls (classVar): Adapter class that inherits AuturiPolicy.
             policy_kwargs (Dict[str, Any]): Keyword arguments used for instantiating the policy.
         """
@@ -48,42 +48,42 @@ class AuturiVectorPolicy(VectorMixin, AuturiPolicy, metaclass=ABCMeta):
         self.policy_cls = policy_cls
         self.policy_kwargs = policy_kwargs
 
-        VectorMixin.__init__(self)
-
-    @property
-    def num_policies(self):
-        return self.num_workers
-
-    def reconfigure(self, config: ParallelizationConfig, model: PolicyModel):
-        """Add remote policy if needed."""
-
-        # set number of currently working workers
-        actor_config = config[self.actor_id]
-        self.reconfigure_workers(new_num_workers=actor_config.num_policy, config=config)
-
-        # call load_model for each policy.
-        for wid, policy_worker in self.workers():
-            self._load_policy_model(
-                wid, policy_worker, model, actor_config.policy_device
-            )
-
     @abstractmethod
-    def _load_policy_model(
-        self, idx: int, policy: AuturiPolicy, model: PolicyModel, device: str
-    ) -> None:
-        """Load the latest trained model parameter on the specified device for the policy."""
+    def reconfigure(self, config: ParallelizationConfig, model: types.PolicyModel):
         raise NotImplementedError
 
-    # TODO: No need to imple.
-    def load_model(self, model: PolicyModel, device: str):
+    @abstractmethod
+    def compute_actions(self, obs: np.ndarray, n_steps: int = -1) -> types.ActionRefs:
+        raise NotImplementedError
+
+    def start_loop(self) -> None:
+        """Setup before running collection loop."""
+        pass
+
+    def stop_loop(self) -> None:
+        """Stop loop, but not terminate entirely."""
         pass
 
     @abstractmethod
-    def start_loop(self):
-        """Setup before running collection loop."""
+    def terminate(self) -> None:
         raise NotImplementedError
 
-    @abstractmethod
-    def stop_loop(self):
-        """Stop loop, but not terminate entirely."""
-        raise NotImplementedError
+
+class AuturiLocalPolicy(AuturiPolicyHandler):
+    def __init__(self, actor_id, policy_cls, policy_kwargs):
+        super().__init__(actor_id, policy_cls, policy_kwargs)
+        policy_kwargs.update({"idx": 0})
+        self.policy = policy_cls(**policy_kwargs)
+
+    def reconfigure(self, config: ParallelizationConfig, model: types.PolicyModel):
+        device = config[self.actor_id].policy_device
+        self.policy.load_model(model, device)
+
+    def compute_actions(
+        self, obs_refs: types.ObservationRefs, n_steps: int = -1
+    ) -> types.ActionTuple:
+        return self.policy.compute_actions(obs_refs, n_steps)
+
+    def terminate(self) -> None:
+        self.policy.terminate()
+        del self.policy

@@ -1,6 +1,7 @@
 """Define Multiprocessing Mixin class that supports for SHMVectorXXX and SHMXXXProc.
 
 """
+from abc import ABCMeta, abstractmethod
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
@@ -12,13 +13,14 @@ import time
 
 from auturi.executor.shm.constant import SHMCommand
 from auturi.executor.shm.util import _create_buffer_from_sample, set_shm_from_attr, wait
+from auturi.executor.vector_utils import VectorMixin
 from auturi.logger import get_logger
 
 BUFFER_COMMAND_IDX = 0
 BUFFER_DATA_OFFSET = 1
 
 
-class SHMVectorMixin:
+class SHMVectorMixin(VectorMixin, metaclass=ABCMeta):
     """Mixin class that supports handling multiple children processes (SHMProcMixin)
 
     This class exploits python shared memory library to control its children.
@@ -38,19 +40,13 @@ class SHMVectorMixin:
         self._command_buffer.fill(SHMCommand.TERM)
         self._logger = get_logger(self.proc_name)
 
+        super().__init__()
+
     @property
+    @abstractmethod
     def proc_name(self) -> str:
         """Identifier for logging."""
         raise NotImplementedError
-
-    @property
-    def num_workers(self) -> int:
-        """Return the number of currently active children."""
-        pass
-
-    def workers(self) -> Tuple[int, mp.Process]:
-        """Iterates all active workers."""
-        pass
 
     def init_proc(
         self, worker_id: int, proc_cls: Any, kwargs: Dict[str, Any]
@@ -113,13 +109,14 @@ class SHMVectorMixin:
     def sync(self, worker_id: Optional[int] = None) -> None:
         self._wait_cmd_done(worker_id)
 
-    def terminate_single_worker(self, worker_id: int, worker: mp.Process) -> None:
+    def _terminate_worker(self, worker_id: int, worker: mp.Process) -> None:
         self.request(SHMCommand.TERM, worker_id=worker_id)
         self._wait_cmd_done(worker_id)
         worker.join()
         self._command_buffer[worker_id, BUFFER_COMMAND_IDX] = SHMCommand.TERM
+        self._logger.info(f"Join worker={worker_id} pid={worker.pid}")
 
-    def terminate_all_workers(self) -> None:
+    def terminate(self) -> None:
         self.request(SHMCommand.TERM)
         for _, worker in self.workers():
             worker.join()
@@ -127,7 +124,7 @@ class SHMVectorMixin:
         self.__command.unlink()
 
 
-class SHMProcMixin(mp.Process):
+class SHMProcMixin(mp.Process, metaclass=ABCMeta):
     """Mixin class for child process of SHMVectorMixin.
 
     This class defines common utility functions about handling command and states via shm buffer.
@@ -149,6 +146,7 @@ class SHMProcMixin(mp.Process):
         super().__init__()
 
     @property
+    @abstractmethod
     def proc_name(self) -> str:
         """Identifier for logging."""
         raise NotImplementedError
@@ -160,6 +158,7 @@ class SHMProcMixin(mp.Process):
         """The entrypoint of child process."""
         self.__command, self._command_buffer = set_shm_from_attr(self.cmd_attr_dict)
 
+    @abstractmethod
     def set_command_handlers(self) -> None:
         """Set handler function for all possible commands."""
         raise NotImplementedError
@@ -205,7 +204,7 @@ class SHMProcMixin(mp.Process):
                 ts = time.perf_counter()
 
 
-class SHMVectorLoopMixin(SHMVectorMixin):
+class SHMVectorLoopMixin(SHMVectorMixin, metaclass=ABCMeta):
     def start_loop(self):
         self.request(SHMCommand.INIT_LOOP)
 
@@ -214,7 +213,7 @@ class SHMVectorLoopMixin(SHMVectorMixin):
         self.sync()
 
 
-class SHMProcLoopMixin(SHMProcMixin):
+class SHMProcLoopMixin(SHMProcMixin, metaclass=ABCMeta):
     def __init__(self, worker_id: int, cmd_attr_dict: Dict[str, Any]):
         super().__init__(worker_id, cmd_attr_dict)
         self.cmd_handler[SHMCommand.INIT_LOOP] = self._loop_handler
@@ -246,6 +245,7 @@ class SHMProcLoopMixin(SHMProcMixin):
         """Handler function called when SHMCommand.STOP_LOOP is set."""
         self.reply(cmd=SHMCommand.STOP_LOOP)
 
+    @abstractmethod
     def _step_loop_once(self, is_first: bool) -> None:
         """Handler function called when SHMCommand.INIT_LOOP is set"""
         raise NotImplementedError

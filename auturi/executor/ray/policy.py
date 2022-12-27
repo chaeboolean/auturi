@@ -1,18 +1,26 @@
 from typing import Any, Dict
 
 import ray
-import torch.nn as nn
 
 import auturi.executor.ray.util as util
-from auturi.executor.policy import AuturiPolicy, AuturiVectorPolicy
+from auturi.executor.policy import AuturiPolicy, AuturiPolicyHandler
+from auturi.executor.typing import PolicyModel
+from auturi.executor.vector_utils import VectorMixin
 from auturi.tuner.config import ParallelizationConfig
 
 
-class RayVectorPolicy(AuturiVectorPolicy):
+class RayVectorPolicy(AuturiPolicyHandler, VectorMixin):
     def __init__(self, actor_id, policy_cls, policy_kwargs):
         self.pending_policies = dict()
+        AuturiPolicyHandler.__init__(self, actor_id, policy_cls, policy_kwargs)
+        VectorMixin.__init__(self)
 
-        super().__init__(actor_id, policy_cls, policy_kwargs)
+    def reconfigure(self, config: ParallelizationConfig, model: PolicyModel):
+        new_num_workers = config[self.actor_id].num_policy
+        device = config[self.actor_id].policy_device
+        VectorMixin.reconfigure_workers(
+            self, new_num_workers=new_num_workers, model=model, device=device
+        )
 
     def _create_worker(self, worker_id: int):
         @ray.remote(num_gpus=0.0001)
@@ -33,18 +41,13 @@ class RayVectorPolicy(AuturiVectorPolicy):
         return RayPolicy.remote(**self.policy_kwargs)
 
     def _reconfigure_worker(
-        self, worker_id: int, worker: Any, config: ParallelizationConfig
+        self, worker_id: int, worker: AuturiPolicy, model: PolicyModel, device: str
     ):
-        pass
+        ref = worker.load_model.remote(model, device)
+        self.pending_policies[ref] = worker_id
 
     def _terminate_worker(self, worker_id: int, worker: Any):
         del worker
-
-    def _load_policy_model(
-        self, idx: int, policy: AuturiPolicy, model: nn.Module, device: str
-    ):
-        ref = policy.load_model.remote(model, device)
-        self.pending_policies[ref] = idx
 
     def compute_actions(self, obs_refs: Dict[int, object], n_steps: int):
         free_policies, _ = ray.wait(list(self.pending_policies.keys()))

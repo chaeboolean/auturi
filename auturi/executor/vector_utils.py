@@ -6,8 +6,6 @@ from typing import Any, Dict, List, Tuple, TypeVar
 
 import numpy as np
 
-from auturi.tuner.config import ParallelizationConfig
-
 T = TypeVar("T")
 
 
@@ -26,14 +24,12 @@ class VectorMixin(metaclass=ABCMeta):
     def num_workers(self):
         return len(self._workers)
 
-    def reconfigure_workers(
-        self, new_num_workers: int, config: ParallelizationConfig, **kwargs
-    ):
+    def reconfigure_workers(self, new_num_workers: int, **kwargs):
         curr_num_workers = self.num_workers
         for worker_id in range(curr_num_workers):
             if worker_id < new_num_workers:
                 worker = self._workers[worker_id]
-                self._reconfigure_worker(worker_id, worker, config, **kwargs)
+                self._reconfigure_worker(worker_id, worker, **kwargs)
 
             else:
                 worker = self._workers.pop(worker_id)
@@ -41,7 +37,7 @@ class VectorMixin(metaclass=ABCMeta):
 
         for worker_id in range(curr_num_workers, new_num_workers):
             worker = self._create_worker(worker_id)
-            self._reconfigure_worker(worker_id, worker, config, **kwargs)
+            self._reconfigure_worker(worker_id, worker, **kwargs)
             self._workers[worker_id] = worker
 
         assert self.num_workers == new_num_workers
@@ -52,9 +48,7 @@ class VectorMixin(metaclass=ABCMeta):
         raise NotImplementedError
 
     @abstractmethod
-    def _reconfigure_worker(
-        self, worker_id: int, worker: T, config: ParallelizationConfig, **kwargs
-    ):
+    def _reconfigure_worker(self, worker_id: int, worker: T, **kwargs):
         """Create worker."""
         raise NotImplementedError
 
