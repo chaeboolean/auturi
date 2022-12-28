@@ -4,7 +4,7 @@ Typings related to Environment: AuturiEnv, AuturiSerialEnv, AuturiVecEnv.
 """
 import math
 from abc import ABCMeta, abstractmethod
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Callable, List, Optional, Tuple
 
 import numpy as np
 
@@ -45,7 +45,7 @@ class AuturiEnv(metaclass=ABCMeta):
         raise NotImplementedError
 
     @abstractmethod
-    def aggregate_rollouts(self, to=Optional[np.ndarray]) -> Dict[str, np.ndarray]:
+    def aggregate_rollouts(self, to=Optional[np.ndarray]) -> types.Rollouts:
         """Aggregates rollout results from remote environments."""
         raise NotImplementedError
 
@@ -62,32 +62,18 @@ class AuturiSerialEnv(AuturiEnv):
     Reference implementation: DummyVecEnv in OpenAI Baselines (https://github.com/DLR-RM/stable-baselines3).
     """
 
-    def __init__(self, actor_id: int, serialenv_id: int, env_fns: List[Callable] = []):
-        self.actor_id = actor_id
-        self.serialenv_id = serialenv_id
-
-        self.env_fns = env_fns
-
-        dummy_env = env_fns[0]()
-        assert isinstance(dummy_env, AuturiEnv)
-        self.setup_dummy_env(dummy_env)
-
-        dummy_obs = dummy_env.reset()
-        assert dummy_obs.shape == self.observation_space.shape
-        dummy_env.terminate()
-
+    def __init__(self):
         self.envs = dict()  # maps env_id and AuturiEnv instance
-        self.start_idx, self.end_idx, self.num_envs = -1, -1, 0
+        self.start_idx, self.end_idx = -1, -1
 
-    def set_working_env(self, start_idx: int, num_envs: int) -> None:
+    def set_working_env(self, start_idx, end_idx, env_fns: List[Callable]) -> None:
         """Initialize environments with env_ids."""
         self.start_idx = start_idx
-        self.end_idx = start_idx + num_envs
-        self.num_envs = num_envs
+        self.end_idx = end_idx
 
         for env_id in range(self.start_idx, self.end_idx):
             if env_id not in self.envs:
-                self.envs[env_id] = self.env_fns[env_id]()
+                self.envs[env_id] = env_fns[env_id]()
 
     def reset(self) -> np.ndarray:
         obs_list = [env.reset() for _, env in self._working_envs()]
@@ -121,7 +107,7 @@ class AuturiSerialEnv(AuturiEnv):
 
         return np.stack(obs_list)
 
-    def aggregate_rollouts(self) -> Dict[str, np.ndarray]:
+    def aggregate_rollouts(self) -> types.Rollouts:
         rollouts_from_each_env = [
             env.aggregate_rollouts() for _, env in self._working_envs()
         ]
@@ -133,6 +119,9 @@ class AuturiSerialEnv(AuturiEnv):
         for env_id in range(self.start_idx, self.end_idx):
             yield env_id, self.envs[env_id]
 
+    def __getitem__(self, index):
+        return self.envs[index]
+
 
 class AuturiEnvHandler(metaclass=ABCMeta):
     def __init__(self, actor_id: int, env_fns: List[Callable]):
@@ -142,7 +131,22 @@ class AuturiEnvHandler(metaclass=ABCMeta):
             actor_id (int): Id of parent actor
             env_fns (List[Callable]): Functions creating Adapter class that inherits AuturiEnv.
         """
-        pass
+        self.actor_id = actor_id
+        self.env_fns = env_fns
+        self.batch_size = -1  # should be initialized when reconfigure
+
+        # set metadata with dummy environment
+        dummy_env = env_fns[0]()
+        assert isinstance(dummy_env, AuturiEnv)
+        self.observation_space = dummy_env.observation_space
+        self.action_space = dummy_env.action_space
+        self.metadata = dummy_env.metadata
+        dummy_env.terminate()
+
+    @abstractmethod
+    @property
+    def num_envs(self):
+        raise NotImplementedError
 
     @abstractmethod
     def reconfigure(self, config: ParallelizationConfig):
@@ -184,18 +188,24 @@ class AuturiEnvHandler(metaclass=ABCMeta):
 
 class AuturiLocalEnv(AuturiSerialEnv, AuturiEnvHandler):
     def __init__(self, actor_id, env_fns: List[Callable[[], AuturiEnv]]):
-        serialenv_id = 0
-        AuturiSerialEnv.__init__(self, actor_id, serialenv_id, env_fns)
+        AuturiEnvHandler.__init__(actor_id, env_fns)
+        AuturiSerialEnv.__init__(self, actor_id, env_fns)
         self.last_action = None
-        self.batch_size = -1
+        self._num_envs = -1
+
+    @property
+    def num_envs(self):
+        raise self._num_envs
 
     def reconfigure(self, config: ParallelizationConfig) -> None:
+        self._num_envs = config[self.actor_id].num_envs
+        self.batch_size = config[self.actor_id].batch_size
+        assert self.batch_size == self._num_envs
+
         start_idx = config.compute_index_for_actor("num_envs", self.actor_id)
-        self.batch_size = config[self.actor_id].num_envs
-        self.set_working_env(start_idx, self.batch_size)
+        self.set_working_env(start_idx, start_idx + self._num_envs, self.env_fns)
 
     def poll(self) -> np.ndarray:
-        print("poll")
         if self.last_action is None:
             return self.reset()
         else:
@@ -207,17 +217,10 @@ class AuturiLocalEnv(AuturiSerialEnv, AuturiEnvHandler):
 
 class AuturiVectorEnv(AuturiEnvHandler, metaclass=ABCMeta):
     def __init__(self, actor_id, env_fns: List[Callable[[], AuturiEnv]]):
-        self.actor_id = actor_id
-        self.env_fns = env_fns
-        self._env_offset, self._rollout_offset, self._num_envs = -1, -1, -1
-        self.batch_size, self.num_env_serial, self.num_worker_to_poll = -1, -1, -1
 
-        dummy_env = env_fns[0]()
-        assert isinstance(dummy_env, AuturiEnv)
-        self.observation_space = dummy_env.observation_space
-        self.action_space = dummy_env.action_space
-        self.metadata = dummy_env.metadata
-        dummy_env.terminate()
+        super().__init__(actor_id, env_fns)
+        self._env_offset, self._rollout_offset, self._num_envs = -1, -1, -1
+        self.num_env_serial = -1
 
     @property
     def num_envs(self):
@@ -232,9 +235,9 @@ class AuturiVectorEnv(AuturiEnvHandler, metaclass=ABCMeta):
         )
 
         actor_config = config[self.actor_id]
-        self._num_envs = actor_config.num_envs
 
         assert actor_config.num_envs <= len(self.env_fns)
+        self._num_envs = actor_config.num_envs
 
         # number of observations that a policy consumes for computing an action
         self.batch_size = actor_config.batch_size
@@ -242,9 +245,6 @@ class AuturiVectorEnv(AuturiEnvHandler, metaclass=ABCMeta):
         # Set the number of environments that are executed sequentially
         # = total number of environments // the degree of environment-level parallelism
         self.num_env_serial = actor_config.num_envs // actor_config.num_parallel
-        self.num_worker_to_poll = math.ceil(self.batch_size / self.num_env_serial)
-
-        assert self.num_worker_to_poll > 0
 
         # set number of currently working workers
         self.reconfigure_workers(new_num_workers=actor_config.num_parallel)

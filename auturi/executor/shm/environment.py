@@ -62,7 +62,7 @@ class SHMParallelEnv(AuturiVectorEnv, SHMVectorLoopMixin):
         self.request(
             EnvCommand.SET_ENV,
             worker_id=worker_id,
-            data=[start_idx, self.num_env_serial],
+            data=[start_idx, start_idx + self.num_env_serial],
         )
 
     # Internally call reset.
