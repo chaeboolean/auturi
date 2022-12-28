@@ -1,19 +1,10 @@
 import time
 from abc import ABCMeta, abstractmethod
-from typing import Any, Callable, Dict, List, Tuple
+from typing import Tuple
 
 import auturi.executor.typing as types
-from auturi.executor.environment import (
-    AuturiEnv,
-    AuturiEnvHandler,
-    AuturiLocalEnv,
-    AuturiVectorEnv,
-)
-from auturi.executor.policy import (
-    AuturiLocalPolicy,
-    AuturiPolicyHandler,
-    AuturiVectorPolicy,
-)
+from auturi.executor.environment import AuturiEnvHandler, AuturiLocalEnv
+from auturi.executor.policy import AuturiPolicyHandler, AuturiLocalPolicy
 from auturi.tuner import AuturiMetric, ParallelizationConfig
 
 
@@ -33,6 +24,22 @@ class AuturiLoopHandler(metaclass=ABCMeta):
         raise NotImplementedError
 
     @abstractmethod
+    def reconfigure(
+        self, config: ParallelizationConfig, model: types.PolicyModel
+    ) -> None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def run(self) -> Tuple[types.RolloutRefs, AuturiMetric]:
+        raise NotImplementedError
+
+
+class AuturiSingleLoopHandler(AuturiLoopHandler, metaclass=ABCMeta):
+    @property
+    def num_actors(self):
+        return 1
+
+    @abstractmethod
     def _create_env_handler(self) -> AuturiEnvHandler:
         raise NotImplementedError
 
@@ -40,14 +47,11 @@ class AuturiLoopHandler(metaclass=ABCMeta):
     def _create_policy_handler(self) -> AuturiPolicyHandler:
         raise NotImplementedError
 
-    @abstractmethod
-    def _validate_config(self, config: ParallelizationConfig) -> None:
-        raise NotImplementedError
-
-    def reconfigure(self, config: ParallelizationConfig, model: types.PolicyModel):
+    def reconfigure(
+        self, config: ParallelizationConfig, model: types.PolicyModel
+    ) -> None:
         """Reconfigure the number of envs and policies according to a given config found by AuturiTuner."""
-        self._validate_config(config)
-        self.num_collect = None  # ??? TODO: SET NUM_COLLECT
+        self.num_collect = config.num_collect
 
         if self.env_handler is None:
             self.env_handler = self._create_env_handler()
@@ -88,45 +92,17 @@ class AuturiLoopHandler(metaclass=ABCMeta):
         self.env_handler.terminate()
 
 
-class SimpleLoopHandler(AuturiLoopHandler):
-    @property
-    def num_actors(self):
-        return 1
+class SimpleLoopHandler(AuturiSingleLoopHandler):
+    def _create_env_handler(self) -> AuturiEnvHandler:
+        return AuturiLocalEnv(0, self.env_fns)
 
-    def _create_env_handler(self):
-        return AuturiLocalEnv(actor_id=0, env_fns=self.env_fns)
-
-    def _create_policy_handler(self):
-        return AuturiLocalPolicy(actor_id=0, env_fns=self.env_fns)
-
-    def _validate_config(self, config: ParallelizationConfig):
-        assert config.num_actors == 1
-        actor_config = config[0]
-
-        assert (actor_config.num_parallel == 1) and (
-            actor_config.batch_size == actor_config.num_envs
-        )
+    def _create_policy_handler(self) -> AuturiPolicyHandler:
+        return AuturiLocalPolicy(0, self.policy_cls, self.policy_kwargs)
 
 
-class NestedLoopHandler(AuturiLoopHandler):
-    @property
-    def num_actors(self):
-        return 1
-
-    def _create_env_handler(self):
-        return AuturiLocalEnv(actor_id=0, env_fns=self.env_fns)
-
-    def _create_policy_handler(self):
-        pass
-
-    def _validate_config(self, config: ParallelizationConfig):
-        assert config.num_actors == 1
-        actor_config = config[0]
-
-        assert (actor_config.num_parallel == 1) and (
-            actor_config.batch_size == actor_config.num_envs
-        )
+class NestedLoopHandler(AuturiSingleLoopHandler, metaclass=ABCMeta):
+    pass
 
 
-class MultiLoopHandler(AuturiLoopHandler):
+class MultiLoopHandler(AuturiLoopHandler, metaclass=ABCMeta):
     pass
