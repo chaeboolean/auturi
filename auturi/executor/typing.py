@@ -1,6 +1,6 @@
 """Defines custom types for Auturi Executor."""
 
-from typing import List, NewType, Optional, Tuple, Union
+from typing import Dict, List, NewType, Optional, Tuple, Union
 
 import numpy as np
 import ray
@@ -32,3 +32,8 @@ Return np.ndarray directly when remote calls are not necessary.
 Else, return None for shm backend or ray.ObjectRef for ray backend.
 """
 ActionRefs = NewType("ActionRefs", Union[ActionTuple, ray.ObjectRef, None])
+
+"""Rollout dictionary type"""
+Rollouts = NewType("Rollouts", Dict[str, np.ndarray])
+
+RolloutRefs = NewType("RolloutRefs", Optional[Rollouts])

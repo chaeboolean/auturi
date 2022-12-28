@@ -1,13 +1,30 @@
-from auturi.executor.shm.actor import SHMActor
+from auturi.executor.executor import AuturiExecutor
 from auturi.executor.shm.environment import SHMParallelEnv
+from auturi.executor.shm.loop import SHMMultiLoopHandler, SHMNestedLoopHandler
 from auturi.executor.shm.policy import SHMVectorPolicy
-from auturi.executor.shm.util import create_shm_from_env
-from auturi.executor.shm.vector_actor import SHMVectorActor
+
+
+class SHMExecutor(AuturiExecutor):
+    def _create_nested_loop_handler(self) -> SHMNestedLoopHandler:
+        return SHMNestedLoopHandler(
+            self.env_fns,
+            self.policy_cls,
+            self.policy_kwargs,
+            max_num_envs=self.tuner.max_num_env,
+            max_rollouts=self.tuner.num_collect,
+        )
+
+    def _create_multiple_loop_handler(self) -> SHMMultiLoopHandler:
+        return SHMMultiLoopHandler(
+            self.env_fns,
+            self.policy_cls,
+            self.policy_kwargs,
+            max_rollouts=self.tuner.num_collect,
+        )
+
 
 __all__ = [
-    "SHMActor",
     "SHMParallelEnv",
     "SHMVectorPolicy",
-    "SHMVectorActor",
-    "create_shm_from_env",
+    "SHMExecutor",
 ]

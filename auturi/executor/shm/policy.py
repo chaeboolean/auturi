@@ -4,7 +4,7 @@ import numpy as np
 
 import auturi.executor.shm.util as util
 import auturi.executor.typing as types
-from auturi.executor.policy import AuturiPolicyHandler
+from auturi.executor.policy import AuturiVectorPolicy
 from auturi.executor.shm.constant import EnvStateEnum, PolicyCommand, PolicyStateEnum
 from auturi.executor.shm.mp_mixin import SHMVectorLoopMixin
 from auturi.executor.shm.policy_proc import SHMPolicyProc
@@ -13,7 +13,7 @@ from auturi.tuner.config import ParallelizationConfig
 MAX_POLICY = 16
 
 
-class SHMVectorPolicy(AuturiPolicyHandler, SHMVectorLoopMixin):
+class SHMVectorPolicy(AuturiVectorPolicy, SHMVectorLoopMixin):
     # shm_config, command_buffer
     def __init__(
         self,

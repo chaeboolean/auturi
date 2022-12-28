@@ -87,3 +87,7 @@ class AuturiLocalPolicy(AuturiPolicyHandler):
     def terminate(self) -> None:
         self.policy.terminate()
         del self.policy
+
+
+class AuturiVectorPolicy(AuturiPolicyHandler, metaclass=ABCMeta):
+    pass

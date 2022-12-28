@@ -12,7 +12,7 @@ ALIGN_BYTES = 64
 
 
 def wait(
-    cond_: Callable[[], bool], timeout_fn: Callable[[], None] = None, timeout: int = 2
+    cond_: Callable[[], bool], timeout_fn: Callable[[], None] = None, timeout: int = 10
 ):
     """Wait until given cond_ predicates returns True.
 
@@ -119,9 +119,7 @@ class WaitingQueue:
         return ret
 
 
-def create_shm_from_env(
-    env_fn: Callable[[], AuturiEnv], max_num_envs: int, rollout_size: int
-):
+def create_data_buffer_from_env(env_fn: Callable[[], AuturiEnv], max_num_envs: int):
     # Collect sample data
     dummy_env = env_fn()  # Single environment (not serial)
     obs = dummy_env.reset()
@@ -133,11 +131,12 @@ def create_shm_from_env(
         raise NotImplementedError
 
     dummy_env.step(action, action_artifacts_sample_list)
-    rollouts = dummy_env.aggregate_rollouts()
 
     sample_action = action
     if isinstance(dummy_env.action_space, gym.spaces.Discrete):
         sample_action = np.array([action])
+
+    dummy_env.terminate()
 
     # Create basic buffers
     buffer_sample_dict = {
@@ -147,22 +146,27 @@ def create_shm_from_env(
         # indicating env_state
         "env": (1, max_num_envs),
     }
-
-    # Create rollout sample dictionary
-    rollout_sample_dict = dict()
-    for key, rollout in rollouts.items():
-        rollout_sample_dict[key] = (rollout[0], rollout_size)
-
     base_buffers, base_buffer_attr = create_buffer_from_sample(buffer_sample_dict)
-    rollout_buffers, rollout_buffer_attr = create_buffer_from_sample(
-        rollout_sample_dict
-    )
+    base_buffers["env"][1].fill(0)
+    return base_buffers, base_buffer_attr
 
+
+def create_rollout_buffer_from_env(env_fn: Callable[[], AuturiEnv], rollout_size: int):
+    rollout_sample_dict = dict()
+
+    # get rollout samples
+    dummy_env = env_fn()
+    dummy_env.reset()
+    action = dummy_env.action_space.sample()
+    action_artifacts_sample_list = dummy_env.artifacts_samples
+    dummy_env.step(action, action_artifacts_sample_list)
+    rollout_sample = dummy_env.aggregate_rollouts()
     dummy_env.terminate()
 
-    # initialize env buffers
-    base_buffers["env"][1].fill(0)
-    return base_buffers, base_buffer_attr, rollout_buffers, rollout_buffer_attr
+    for key, rollout in rollout_sample.items():
+        rollout_sample_dict[key] = (rollout[0], rollout_size)
+
+    return create_buffer_from_sample(rollout_sample_dict)
 
 
 def device_to_int(device: str) -> int:
