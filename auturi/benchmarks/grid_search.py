@@ -10,6 +10,7 @@ from auturi.benchmarks.tasks.sb3_wrap import SB3EnvWrapper, SB3PolicyWrapper
 from auturi.executor import create_executor
 from auturi.tuner import ActorConfig, ParallelizationConfig, create_tuner_with_config
 from auturi.tuner.grid_search import GridSearchTuner
+from auturi.tuner.specific_parallelism import SpecificParallelismComparator
 
 
 def create_envs(cls, task_id, rank, dummy=None):
@@ -44,15 +45,26 @@ def make_grid_search_tuner(args):
     )
 
 
+def make_specfic_tuner(args):
+    return SpecificParallelismComparator(
+        "L",
+        args.num_envs,
+        args.num_envs,
+        max_policy_num=8,
+        num_collect=args.num_collect,
+        num_iterate=args.num_iteration,
+    )
+
+
 def prepare_task(env_name, num_envs):
 
     if env_name == "football":
         task_id = "academy_3_vs_1_with_keeper"
         env_cls, policy_cls = FootballEnvWrapper, FootballPolicyWrapper
 
-    # elif env_name == "circuit":
-    #     task_id = None
-    #     env_cls, policy_cls = CircuitEnvWrapper, CircuitPolicyWrapper
+    elif env_name == "circuit":
+        task_id = None
+        env_cls, policy_cls = CircuitEnvWrapper, CircuitPolicyWrapper
 
     else:
         atari_name = "PongNoFrameskip-v4"
@@ -70,7 +82,7 @@ def prepare_task(env_name, num_envs):
 
 def run(args):
     env_fns, policy_cls, policy_kwargs = prepare_task(args.env, args.num_envs)
-    tuner = make_grid_search_tuner(args)
+    tuner = make_specfic_tuner(args)
     executor = create_executor(env_fns, policy_cls, policy_kwargs, tuner, "shm")
 
     try:

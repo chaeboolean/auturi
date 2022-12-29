@@ -8,7 +8,10 @@ from auturi.executor.environment import AuturiVectorEnv
 from auturi.executor.shm.constant import EnvCommand
 from auturi.executor.shm.env_proc import EnvStateEnum, SHMEnvProc
 from auturi.executor.shm.mp_mixin import SHMVectorLoopMixin
-from auturi.executor.shm.util import WaitingQueue, set_shm_from_attr, wait
+from auturi.executor.shm.util import (
+    WaitingQueue,
+    wait,
+)
 
 MAX_ENV_NUM = 64
 
@@ -24,17 +27,19 @@ class SHMParallelEnv(AuturiVectorEnv, SHMVectorLoopMixin):
         self,
         actor_id: int,
         env_fns: List[Callable],
+        base_buffers: Dict[str, Any],
         base_buffer_attr: Dict[str, Any],
+        rollout_buffers: Dict[str, Any],
         rollout_buffer_attr: Dict[str, Any],
     ):
+        self.base_buffers = base_buffers
         self.base_buffer_attr = base_buffer_attr
+        self.rollout_buffers = rollout_buffers
         self.rollout_buffer_attr = rollout_buffer_attr
 
-        self.__obs, self.obs_buffer = set_shm_from_attr(base_buffer_attr["obs"])
-        self.__action, self.action_buffer = set_shm_from_attr(
-            base_buffer_attr["action"]
-        )
-        self.__env, self.env_buffer = set_shm_from_attr(self.base_buffer_attr["env"])
+        self.obs_buffer = base_buffers["obs"][1]
+        self.action_buffer = base_buffers["action"][1]
+        self.env_buffer = base_buffers["env"][1]
 
         self.queue = WaitingQueue(len(env_fns))
         self.env_counter = np.zeros(len(env_fns), dtype=np.int32)
@@ -111,9 +116,16 @@ class SHMParallelEnv(AuturiVectorEnv, SHMVectorLoopMixin):
             prev_ctr = cur_ctr
 
         self.sync()
-        self._logger.info("Sync after Rollouts. ")
 
-        return None
+        return self._aggregate_buffer()
+
+    def _aggregate_buffer(self) -> Dict[str, np.ndarray]:
+        ret_dict = dict()
+        for key, tuple_ in self.rollout_buffers.items():
+            # ret_dict[key] = tuple_[1][:num_collect, :]
+            ret_dict[key] = tuple_[1]
+
+        return ret_dict
 
     def step(
         self, action: np.ndarray, action_artifacts: types.ActionArtifacts

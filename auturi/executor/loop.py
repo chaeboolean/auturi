@@ -18,8 +18,8 @@ class AuturiLoopHandler(metaclass=ABCMeta):
         self.policy_handler = None
         self.num_collect = -1
 
-    @abstractmethod
     @property
+    @abstractmethod
     def num_actors(self):
         raise NotImplementedError
 

@@ -49,7 +49,7 @@ class AuturiExecutor(metaclass=ABCMeta):
         super().__init__()
 
     def _create_simple_loop_handler(self) -> SimpleLoopHandler:
-        return SimpleLoopHandler(self.env_fns, self.policy_cls, self.policy_kwargs)
+        return SimpleLoopHandler(0, self.env_fns, self.policy_cls, self.policy_kwargs)
 
     @abstractmethod
     def _create_nested_loop_handler(self) -> NestedLoopHandler:
@@ -67,22 +67,30 @@ class AuturiExecutor(metaclass=ABCMeta):
             return prev_handler
 
         else:
-            prev_handler.terminate()
+            if prev_handler is not None:
+                prev_handler.terminate()
             return create_fn()
 
     def get_loop_handler(self, config):
         if config.num_actors == 1:
             if _is_simple_loop(config[0]):
-                return self._get_or_create_loop_handler(SimpleLoopHandler, self._create_simple_loop_handler)
+                return self._get_or_create_loop_handler(
+                    SimpleLoopHandler, self._create_simple_loop_handler
+                )
 
             else:
-                return self._get_or_create_loop_handler(NestedLoopHandler, self._create_nested_loop_handler)
+                return self._get_or_create_loop_handler(
+                    NestedLoopHandler, self._create_nested_loop_handler
+                )
 
         else:
-            for _, actor_config in config.actor_map:
-                assert _is_simple_loop(actor_config), f"Do not support such config for now."
-            return self._get_or_create_loop_handler(MultiLoopHandler, self._create_multiple_loop_handler)
-
+            for _, actor_config in config.actor_map.items():
+                assert _is_simple_loop(
+                    actor_config
+                ), f"Do not support such config for now."
+            return self._get_or_create_loop_handler(
+                MultiLoopHandler, self._create_multiple_loop_handler
+            )
 
     def reconfigure(self, config: ParallelizationConfig, model: PolicyModel):
         """Adjust executor's component according to tuner-given config.
@@ -99,6 +107,7 @@ class AuturiExecutor(metaclass=ABCMeta):
     def run(self, model: PolicyModel) -> Tuple[Dict[str, Any], AuturiMetric]:
         """Run collection loop with `tuner.num_collect` iterations, and return experience trajectories and AuturiMetric."""
         next_config = self.tuner.next()
+        print("before reconfigure, ", next_config)
         self.reconfigure(next_config, model)
 
         rollouts, metric = self._loop_handler.run()

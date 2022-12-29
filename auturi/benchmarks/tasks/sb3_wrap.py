@@ -104,12 +104,11 @@ class SB3PolicyWrapper(AuturiPolicy):
         obs = torch.from_numpy(obs).to(self.device)
         actions, values, log_probs = self.policy(obs)
         actions = _to_cpu_numpy(actions)
-        artifacts = np.array(
-            [_to_cpu_numpy(values).flatten()[0], _to_cpu_numpy(log_probs)[0]]
+        artifacts = np.stack(
+            [_to_cpu_numpy(values).flatten(), _to_cpu_numpy(log_probs)], 1
         )
         if self.is_atari_:
             actions = np.expand_dims(actions, -1)
-
         return actions, [artifacts]
 
     def terminate(self):

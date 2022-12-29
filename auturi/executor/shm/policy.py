@@ -20,8 +20,10 @@ class SHMVectorPolicy(AuturiVectorPolicy, SHMVectorLoopMixin):
         actor_id,
         policy_cls,
         policy_kwargs: Dict[str, Any],
+        base_buffers: Dict[str, Any],
         base_buffer_attr: Dict[str, Any],
     ):
+        self.base_buffers = base_buffers
         self.base_buffer_attr = base_buffer_attr
 
         # create policy buffer
@@ -33,14 +35,12 @@ class SHMVectorPolicy(AuturiVectorPolicy, SHMVectorLoopMixin):
         self.base_buffer_attr["policy"] = policy_attr
         self.policy_buffer.fill(PolicyStateEnum.STOPPED)
 
-        self.__env, self.env_buffer = util.set_shm_from_attr(
-            self.base_buffer_attr["env"]
-        )
+        self.env_buffer = self.base_buffers["env"][1]
 
         # Env visibility is limited for each actor
         self._env_mask_for_actor = None
 
-        AuturiPolicyHandler.__init__(self, actor_id, policy_cls, policy_kwargs)
+        AuturiVectorPolicy.__init__(self, actor_id, policy_cls, policy_kwargs)
         SHMVectorLoopMixin.__init__(self, MAX_POLICY, max_data=3)
 
     @property
@@ -90,7 +90,7 @@ class SHMVectorPolicy(AuturiVectorPolicy, SHMVectorLoopMixin):
         )
 
     def terminate(self) -> None:
-        super().terminate()
+        SHMVectorLoopMixin.terminate(self)
         self.__policy.unlink()
 
     def compute_actions(

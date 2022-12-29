@@ -7,11 +7,12 @@ from auturi.executor.shm.policy import SHMVectorPolicy
 class SHMExecutor(AuturiExecutor):
     def _create_nested_loop_handler(self) -> SHMNestedLoopHandler:
         return SHMNestedLoopHandler(
+            0,
             self.env_fns,
             self.policy_cls,
             self.policy_kwargs,
             max_num_envs=self.tuner.max_num_env,
-            max_rollouts=self.tuner.num_collect,
+            num_rollouts=self.tuner.num_collect,
         )
 
     def _create_multiple_loop_handler(self) -> SHMMultiLoopHandler:
@@ -19,7 +20,8 @@ class SHMExecutor(AuturiExecutor):
             self.env_fns,
             self.policy_cls,
             self.policy_kwargs,
-            max_rollouts=self.tuner.num_collect,
+            max_num_loop=self.tuner.max_num_env,
+            num_rollouts=self.tuner.num_collect,
         )
 
 

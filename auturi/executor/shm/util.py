@@ -84,6 +84,15 @@ def set_shm_from_attr(attr_dict):
     return _buffer, np_buffer
 
 
+def set_rollout_buffer_from_attr(attr_dict):
+    rollout_buffers = dict()
+    for key, attr_dict in attr_dict.items():
+        raw_buf, np_buffer = set_shm_from_attr(attr_dict)
+        rollout_buffers[key] = (raw_buf, np_buffer)
+
+    return rollout_buffers
+
+
 class WaitingQueue:
     """Imitate circular queue, but minimizing redundant numpy copy or traverse array."""
 

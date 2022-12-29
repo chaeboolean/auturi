@@ -6,7 +6,7 @@ import auturi.executor.typing as types
 from auturi.executor.environment import AuturiSerialEnv
 from auturi.executor.shm.constant import EnvCommand, EnvStateEnum
 from auturi.executor.shm.mp_mixin import SHMProcLoopMixin
-from auturi.executor.shm.util import set_shm_from_attr
+from auturi.executor.shm.util import set_rollout_buffer_from_attr, set_shm_from_attr
 
 
 class SHMEnvProc(SHMProcLoopMixin):
@@ -38,10 +38,7 @@ class SHMEnvProc(SHMProcLoopMixin):
             self.base_buffer_attr["artifact"]
         )
 
-        self.rollout_buffers = dict()
-        for key, attr_dict in self.rollout_buffer_attr.items():
-            raw_buf, np_buffer = set_shm_from_attr(attr_dict)
-            self.rollout_buffers[key] = (raw_buf, np_buffer)
+        self.rollout_buffers = set_rollout_buffer_from_attr(self.rollout_buffer_attr)
 
         SHMProcLoopMixin.initialize(self)
 
@@ -74,7 +71,6 @@ class SHMEnvProc(SHMProcLoopMixin):
         for key_, trajectories in local_rollouts.items():
             roll_buffer = self.rollout_buffers[key_][1]
 
-            # TODO: stack first
             np.copyto(roll_buffer[data_list[0] : data_list[1]], trajectories)
 
         self.reply(cmd)
@@ -122,6 +118,11 @@ class SHMEnvProc(SHMProcLoopMixin):
         self.obs_buffer[slice_, :] = obs
 
     def get_actions(self, curr_id=None) -> types.ActionTuple:
+        # if curr_id is not None:
+        #     action = self.action_buffer[curr_id]
+        #     artifacts = self.artifact_buffer[curr_id]
+        #     return action, [artifacts]
+
         slice_ = (
             slice(curr_id, curr_id + 1)
             if curr_id is not None

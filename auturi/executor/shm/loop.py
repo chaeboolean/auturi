@@ -1,5 +1,5 @@
-from typing import Any, List, Tuple, Dict
-import  time
+import time
+from typing import Any, Dict, List, Tuple
 
 import numpy as np
 
@@ -10,29 +10,48 @@ from auturi.executor.shm.constant import ActorCommand
 from auturi.executor.shm.environment import SHMParallelEnv
 from auturi.executor.shm.mp_mixin import SHMProcMixin, SHMVectorMixin
 from auturi.executor.shm.policy import SHMVectorPolicy
-from auturi.tuner import ParallelizationConfig, AuturiMetric
+from auturi.tuner import AuturiMetric, ParallelizationConfig
 
 
 class SHMNestedLoopHandler(NestedLoopHandler):
-    def __init__(self, env_fns, policy_cls, policy_kwargs, max_num_envs, max_rollouts):
-        super().__init__(env_fns, policy_cls, policy_kwargs)
+    def __init__(
+        self,
+        loop_id,
+        env_fns,
+        policy_cls,
+        policy_kwargs,
+        max_num_envs,
+        num_rollouts,
+        rollout_buffer_attr=None,
+    ):
+        super().__init__(loop_id, env_fns, policy_cls, policy_kwargs)
 
         self.base_buffers, self.base_buffer_attr = util.create_data_buffer_from_env(
             env_fns[0], max_num_envs
         )
-        (
-            self.rollout_buffers,
-            self.rollout_buffer_attr,
-        ) = util.create_rollout_buffer_from_env(env_fns[0], max_rollouts)
+        if rollout_buffer_attr is None:
+            (
+                self.rollout_buffers,
+                self.rollout_buffer_attr,
+            ) = util.create_rollout_buffer_from_env(env_fns[0], num_rollouts)
 
     def _create_env_handler(self):
         return SHMParallelEnv(
-            0, self.env_fns, self.base_buffer_attr, self.rollout_buffer_attr
+            self.loop_id,
+            self.env_fns,
+            self.base_buffers,
+            self.base_buffer_attr,
+            self.rollout_buffers,
+            self.rollout_buffer_attr,
         )
 
     def _create_policy_handler(self):
         return SHMVectorPolicy(
-            0, self.policy_cls, self.policy_kwargs, self.base_buffer_attr
+            self.loop_id,
+            self.policy_cls,
+            self.policy_kwargs,
+            self.base_buffers,
+            self.base_buffer_attr,
         )
 
     def terminate(self):
@@ -59,13 +78,17 @@ class SimpleLoopProc(SHMProcMixin):
         self.env_fns = env_fns
         self.policy_cls = policy_cls
         self.policy_kwargs = policy_kwargs
+
         self.rollout_buffer_attr = rollout_buffer_attr
+        self.rollout_buffers = util.set_rollout_buffer_from_attr(rollout_buffer_attr)
+        self._start_idx, self._end_idx = -1, -1
 
         super().__init__(worker_id, cmd_attr_dict=cmd_attr_dict)
 
     def initialize(self) -> None:
-        self._loop_handler = SimpleLoopHandler(
-            self.env_fns, self.policy_cls, self.policy_kwargs
+        cls = SimpleLoopHandler
+        self._loop_handler = cls(
+            self.worker_id, self.env_fns, self.policy_cls, self.policy_kwargs
         )
 
         SHMProcMixin.initialize(self)
@@ -80,12 +103,27 @@ class SimpleLoopProc(SHMProcMixin):
 
     def reconfigure_handler(self, cmd: int, _) -> None:
         config = util.convert_buffer_to_config(self._command_buffer[:, 1:])
+
+        # Update rollout buffer index
+        self._start_idx = config.compute_index_for_actor("num_collect", self.worker_id)
+        self._end_idx = self._start_idx + config[self.worker_id].num_collect
+
+        # TODO: FIXME
+        self._loop_handler.num_collect = config[self.worker_id].num_collect
+
         self._loop_handler.reconfigure(config, model=None)
         self._logger.debug("Reconfigure.. sync done")
         self.reply(cmd)
 
     def run_handler(self, cmd: int, _) -> None:
-        self._loop_handler.run()
+        local_rollouts, metric = self._loop_handler.run()
+        for key_, trajectories in local_rollouts.items():
+            roll_buffer = self.rollout_buffers[key_][1]
+
+            # TODO: stack first
+            # print(key_, f"=> {trajectories.shape} , len({self._start_idx}, {self._end_idx})")
+            np.copyto(roll_buffer[self._start_idx : self._end_idx], trajectories)
+
         self.reply(cmd)
 
     def _term_handler(self, cmd: int, data_list: List[int]) -> None:
@@ -93,7 +131,20 @@ class SimpleLoopProc(SHMProcMixin):
         super()._term_handler(cmd, data_list)
 
 
+MAX_ACTOR_DATA = 7
+
+
 class SHMMultiLoopHandler(MultiLoopHandler, SHMVectorMixin):
+    def __init__(
+        self, env_fns, policy_cls, policy_kwargs, max_num_loop: int, num_rollouts: int
+    ):
+        MultiLoopHandler.__init__(self, env_fns, policy_cls, policy_kwargs)
+        SHMVectorMixin.__init__(self, max_num_loop, MAX_ACTOR_DATA)
+        (
+            self.rollout_buffers,
+            self.rollout_buffer_attr,
+        ) = util.create_rollout_buffer_from_env(env_fns[0], num_rollouts)
+
     @property
     def num_actors(self):
         return self.num_workers
@@ -102,20 +153,13 @@ class SHMMultiLoopHandler(MultiLoopHandler, SHMVectorMixin):
     def proc_name(self) -> str:
         return "SHMMultiLoopHandler"
 
-    def __init__(self, env_fns, policy_cls, policy_kwargs, max_rollouts: int):
-        super().__init__(env_fns, policy_cls, policy_kwargs)
-        self.rollout_buffer_attr = util.create_rollout_buffer_from_env(
-            env_fns[0], max_rollouts
-        )
-
     def reconfigure(
         self, config: ParallelizationConfig, model: types.PolicyModel
     ) -> None:
         self._logger.info(f"\n\n============================reconfigure {config}\n")
         util.copy_config_to_buffer(config, self._command_buffer[:, 1:])
-        super().reconfigure(config, model)
-        self._wait_cmd_done()
-        
+        self.reconfigure_workers(config.num_actors, config=config, model=model)
+        self._wait_cmd_done()  # sync
 
     def _create_worker(self, worker_id: int) -> SimpleLoopProc:
         kwargs = {
@@ -144,31 +188,27 @@ class SHMMultiLoopHandler(MultiLoopHandler, SHMVectorMixin):
         SHMVectorMixin.terminate_single_worker(self, worker_id, worker)
         self._logger.info(f"Join worker={worker_id} pid={worker.pid}")
 
-
-    def _run(self) -> Tuple[Dict[str, Any], AuturiMetric]:
+    def run(self) -> Tuple[Dict[str, Any], AuturiMetric]:
         self._logger.info(f"\n\n============================RUN\n")
+
+        start_time = time.perf_counter()
         self.request(ActorCommand.RUN)
         self._logger.debug("Set command RUN")
 
-        start_time = time.perf_counter()
         self._wait_cmd_done()
         end_time = time.perf_counter()
 
         # Aggregate
-        agg_rollouts = self._aggregate_rollouts(self.rollout_size)
-        return agg_rollouts, AuturiMetric(
-            self.rollout_size, end_time - start_time
-        )  # TODO: how to measure time of each worker?
+        return None, AuturiMetric(self.num_collect, end_time - start_time)
 
-    def _aggregate_rollouts(self, num_collect: int) -> Dict[str, np.ndarray]:
+    def _aggregate_rollouts(self) -> Dict[str, np.ndarray]:
         ret_dict = dict()
         for key, tuple_ in self.rollout_buffers.items():
-            # ret_dict[key] = tuple_[1][:num_collect, :]
             ret_dict[key] = tuple_[1]
 
         return ret_dict
 
     def terminate(self):
-        SHMVectorMixin.terminate_all_workers(self)
+        SHMVectorMixin.terminate(self)
         for _, tuple_ in self.rollout_buffers.items():
             tuple_[0].unlink()

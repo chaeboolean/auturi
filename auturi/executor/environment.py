@@ -2,9 +2,8 @@
 Typings related to Environment: AuturiEnv, AuturiSerialEnv, AuturiVecEnv.
 
 """
-import math
 from abc import ABCMeta, abstractmethod
-from typing import Callable, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -101,8 +100,8 @@ class AuturiSerialEnv(AuturiEnv):
         """
         obs_list = []
         for eid, env in self._working_envs():
-            artifacts_ = [elem[eid - self.start_idx] for elem in action_artifacts]
-            obs = env.step(actions[eid - self.start_idx], artifacts_)
+            artifacts_ = [elem[eid - self.start_idx, :] for elem in action_artifacts]
+            obs = env.step(actions[eid - self.start_idx, :], artifacts_)
             obs_list += [obs]
 
         return np.stack(obs_list)
@@ -143,8 +142,8 @@ class AuturiEnvHandler(metaclass=ABCMeta):
         self.metadata = dummy_env.metadata
         dummy_env.terminate()
 
-    @abstractmethod
     @property
+    @abstractmethod
     def num_envs(self):
         raise NotImplementedError
 
@@ -188,14 +187,17 @@ class AuturiEnvHandler(metaclass=ABCMeta):
 
 class AuturiLocalEnv(AuturiSerialEnv, AuturiEnvHandler):
     def __init__(self, actor_id, env_fns: List[Callable[[], AuturiEnv]]):
-        AuturiEnvHandler.__init__(actor_id, env_fns)
-        AuturiSerialEnv.__init__(self, actor_id, env_fns)
+        AuturiEnvHandler.__init__(self, actor_id, env_fns)
+        AuturiSerialEnv.__init__(self)
         self.last_action = None
         self._num_envs = -1
 
     @property
     def num_envs(self):
-        raise self._num_envs
+        return self._num_envs
+
+    def start_loop(self) -> None:
+        self.last_action = None
 
     def reconfigure(self, config: ParallelizationConfig) -> None:
         self._num_envs = config[self.actor_id].num_envs

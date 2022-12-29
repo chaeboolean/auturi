@@ -41,7 +41,7 @@ class GridSearchTuner(AuturiTuner):
 
         print("=" * 20)
         print(config)
-        print(f"Mean Result: {mean_metric.elapsed / self.num_iterate} sec")
+        print(f"Mean Result: {mean_metric.elapsed} sec")
         print("=" * 20)
 
 
