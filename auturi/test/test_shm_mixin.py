@@ -3,50 +3,11 @@ from multiprocessing import shared_memory as shm
 from typing import List
 
 import numpy as np
-
 from auturi.executor.shm.mp_mixin import SHMProcLoopMixin, SHMVectorLoopMixin
 
 RESET = 11
 INCR = 12
 DECR = 13
-
-
-class _TestVector(SHMVectorLoopMixin):
-    def __init__(self):
-        shape = (80,)
-        self.__buffer = shm.SharedMemory(create=True, size=4 * 80)
-        self.buffer = np.ndarray(shape, dtype=np.int32, buffer=self.__buffer.buf)
-        self.workers = dict()
-
-        super().__init__(max_workers=100)
-
-    @property
-    def proc_name(self):
-        return "TestVector"
-
-    @property
-    def num_workers(self):
-        return len(self.workers)
-
-    def reconfigure(self, num_workers: int):
-        old_num_wokers = len(self.workers)
-        for worker_id in range(old_num_wokers):
-            if worker_id >= num_workers:
-                self._terminate_worker(worker_id, self.workers[worker_id])
-                del self.workers[worker_id]
-
-        for worker_id in range(old_num_wokers, num_workers):
-            p = self.init_proc(worker_id, _TestProc, {"buf_name": self.__buffer.name})
-            self.workers[worker_id] = p
-
-        for id, worker in self.workers.items():
-            assert worker.is_alive(), f"{id} is not alive..."
-
-        self.sync()
-
-    def terminate(self):
-        super().terminate_all_workers(workers=list(self.workers.values()))
-        self.__buffer.unlink()
 
 
 class _TestProc(SHMProcLoopMixin):
@@ -83,6 +44,33 @@ class _TestProc(SHMProcLoopMixin):
     def _step_loop_once(self, is_first: bool):
         self.buffer[self.worker_id] += 1
         time.sleep(0.5)
+
+
+class _TestVector(SHMVectorLoopMixin):
+    def __init__(self):
+        shape = (80,)
+        self.__buffer = shm.SharedMemory(create=True, size=4 * 80)
+        self.buffer = np.ndarray(shape, dtype=np.int32, buffer=self.__buffer.buf)
+
+        super().__init__(max_workers=100)
+
+    @property
+    def proc_name(self):
+        return "TestVectorClass"
+
+    def _create_worker(self, worker_id: int) -> _TestProc:
+        kwargs = {"buf_name": self.__buffer.name}
+        return self.init_proc(worker_id, _TestProc, kwargs)
+
+    def _reconfigure_worker(self, worker_id: int, worker: _TestProc) -> None:
+        pass
+
+    def reconfigure(self, num_workers: int):
+        self.reconfigure_workers(num_workers)
+
+    def terminate(self):
+        super().terminate()
+        self.__buffer.unlink()
 
 
 def test_basic():

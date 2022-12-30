@@ -107,7 +107,6 @@ class AuturiExecutor(metaclass=ABCMeta):
     def run(self, model: PolicyModel) -> Tuple[Dict[str, Any], AuturiMetric]:
         """Run collection loop with `tuner.num_collect` iterations, and return experience trajectories and AuturiMetric."""
         next_config = self.tuner.next()
-        print("before reconfigure, ", next_config)
         self.reconfigure(next_config, model)
 
         rollouts, metric = self._loop_handler.run()
