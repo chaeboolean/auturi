@@ -4,8 +4,8 @@ from typing import Any, Callable, Dict, Tuple
 
 import gym
 import numpy as np
-
 from auturi.executor.environment import AuturiEnv
+from auturi.executor.gym_utils import get_action_sample
 from auturi.tuner import ActorConfig, ParallelizationConfig
 
 ALIGN_BYTES = 64
@@ -64,9 +64,9 @@ def _create_buffer_from_sample(sample_: np.ndarray, max_num: int):
 
     Returns buffer with shape (max_num, *sample_.shape).
     """
+    assert isinstance(sample_, np.ndarray)
 
-    sample_ = sample_ if hasattr(sample_, "shape") else np.array(sample_)
-    shape_ = (max_num,) + sample_.shape
+    shape_ = (max_num,) + sample_.shape[1:]
     buffer_ = shm.SharedMemory(create=True, size=align(max_num, sample_))
     np_buffer_ = np.ndarray(shape_, dtype=sample_.dtype, buffer=buffer_.buf)
     attr_dict = {"shape": shape_, "dtype": sample_.dtype, "name": buffer_.name}
@@ -132,18 +132,14 @@ def create_data_buffer_from_env(env_fn: Callable[[], AuturiEnv], max_num_envs: i
     # Collect sample data
     dummy_env = env_fn()  # Single environment (not serial)
     obs = dummy_env.reset()
-    action = dummy_env.action_space.sample()
+    sample_action = get_action_sample(dummy_env.action_space, 1)
     action_artifacts_sample_list = dummy_env.artifacts_samples
 
     # TODO
     if len(action_artifacts_sample_list) > 1:
         raise NotImplementedError
 
-    dummy_env.step(action, action_artifacts_sample_list)
-
-    sample_action = action
-    if isinstance(dummy_env.action_space, gym.spaces.Discrete):
-        sample_action = np.array([action])
+    dummy_env.step(sample_action, action_artifacts_sample_list)
 
     dummy_env.terminate()
 
@@ -153,7 +149,7 @@ def create_data_buffer_from_env(env_fn: Callable[[], AuturiEnv], max_num_envs: i
         "action": (sample_action, max_num_envs),
         "artifact": (action_artifacts_sample_list[0], max_num_envs),
         # indicating env_state
-        "env": (1, max_num_envs),
+        "env": (np.array([[1]]), max_num_envs),
     }
     base_buffers, base_buffer_attr = create_buffer_from_sample(buffer_sample_dict)
     base_buffers["env"][1].fill(0)
@@ -166,7 +162,7 @@ def create_rollout_buffer_from_env(env_fn: Callable[[], AuturiEnv], rollout_size
     # get rollout samples
     dummy_env = env_fn()
     dummy_env.reset()
-    action = dummy_env.action_space.sample()
+    action = get_action_sample(dummy_env.action_space, 1)
     action_artifacts_sample_list = dummy_env.artifacts_samples
     dummy_env.step(action, action_artifacts_sample_list)
     rollout_sample = dummy_env.aggregate_rollouts()

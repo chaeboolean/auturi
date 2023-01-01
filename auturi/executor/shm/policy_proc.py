@@ -1,8 +1,7 @@
 from typing import List
 
-import numpy as np
-
 import auturi.executor.shm.util as util
+import numpy as np
 from auturi.executor.policy import AuturiPolicy
 from auturi.executor.shm.constant import EnvStateEnum, PolicyCommand, PolicyStateEnum
 from auturi.executor.shm.mp_mixin import SHMProcLoopMixin

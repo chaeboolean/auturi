@@ -4,7 +4,7 @@ from typing import Tuple
 
 import auturi.executor.typing as types
 from auturi.executor.environment import AuturiEnvHandler, AuturiLocalEnv
-from auturi.executor.policy import AuturiPolicyHandler, AuturiLocalPolicy
+from auturi.executor.policy import AuturiLocalPolicy, AuturiPolicyHandler
 from auturi.tuner import AuturiMetric, ParallelizationConfig
 
 
@@ -16,12 +16,7 @@ class AuturiLoopHandler(metaclass=ABCMeta):
 
         self.env_handler = None
         self.policy_handler = None
-        self.num_collect = -1
-
-    @property
-    @abstractmethod
-    def num_actors(self):
-        raise NotImplementedError
+        self.num_collect = -1  # initialized when reconfiguration
 
     @abstractmethod
     def reconfigure(
@@ -35,9 +30,9 @@ class AuturiLoopHandler(metaclass=ABCMeta):
 
 
 class AuturiSingleLoopHandler(AuturiLoopHandler, metaclass=ABCMeta):
-    @property
-    def num_actors(self):
-        return 1
+    def __init__(self, loop_id, env_fns, policy_cls, policy_kwargs):
+        super().__init__(env_fns, policy_cls, policy_kwargs)
+        self.loop_id = loop_id
 
     @abstractmethod
     def _create_env_handler(self) -> AuturiEnvHandler:
@@ -51,16 +46,18 @@ class AuturiSingleLoopHandler(AuturiLoopHandler, metaclass=ABCMeta):
         self, config: ParallelizationConfig, model: types.PolicyModel
     ) -> None:
         """Reconfigure the number of envs and policies according to a given config found by AuturiTuner."""
-        self.num_collect = config.num_collect
-
         if self.env_handler is None:
             self.env_handler = self._create_env_handler()
 
         if self.policy_handler is None:
             self.policy_handler = self._create_policy_handler()
 
+        self.num_collect = config[self.loop_id].num_collect
         self.env_handler.reconfigure(config)
         self.policy_handler.reconfigure(config, model)
+
+    def _num_iteration(self) -> int:
+        return self.num_collect
 
     def run(self) -> Tuple[types.RolloutRefs, AuturiMetric]:
         """Run collection loop for num_collect iterations, and return experience trajectories."""
@@ -70,7 +67,9 @@ class AuturiSingleLoopHandler(AuturiLoopHandler, metaclass=ABCMeta):
 
         n_steps = 0
         start_time = time.perf_counter()
-        while n_steps < self.num_collect:
+
+        loop_finish_cond = self._num_iteration()
+        while n_steps < loop_finish_cond:
             obs_refs: types.ObservationRefs = self.env_handler.poll()
             action_refs: types.ActionRefs = self.policy_handler.compute_actions(
                 obs_refs, n_steps
@@ -94,10 +93,15 @@ class AuturiSingleLoopHandler(AuturiLoopHandler, metaclass=ABCMeta):
 
 class SimpleLoopHandler(AuturiSingleLoopHandler):
     def _create_env_handler(self) -> AuturiEnvHandler:
-        return AuturiLocalEnv(0, self.env_fns)
+        return AuturiLocalEnv(self.loop_id, self.env_fns)
 
     def _create_policy_handler(self) -> AuturiPolicyHandler:
-        return AuturiLocalPolicy(0, self.policy_cls, self.policy_kwargs)
+        return AuturiLocalPolicy(self.loop_id, self.policy_cls, self.policy_kwargs)
+
+    # TODO: This is hotfix.
+    # We artificially add num_envs to prevent env.reset() to be counted as trajectories.
+    def _num_iteration(self):
+        return self.num_collect + self.env_handler.num_envs
 
 
 class NestedLoopHandler(AuturiSingleLoopHandler, metaclass=ABCMeta):

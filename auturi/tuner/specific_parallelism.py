@@ -1,5 +1,6 @@
 from functools import partial
-from typing import Callable, Optional
+from itertools import chain
+from typing import List
 
 from auturi.tuner.base_tuner import AuturiTuner
 from auturi.tuner.config import ActorConfig, ParallelizationConfig
@@ -19,7 +20,7 @@ class SpecificParallelismComparator(AuturiTuner):
 
     def __init__(
         self,
-        name: str,
+        names: List[str],
         min_num_env: int,
         max_num_env: int,
         num_collect: int,
@@ -32,7 +33,8 @@ class SpecificParallelismComparator(AuturiTuner):
             "L": partial(_l_generator, min_num_env, num_collect, max_policy_num),
             "P": partial(_p_generator, min_num_env, num_collect, max_policy_num),
         }
-        self.generator = gen_dict[name]()
+        args = [gen_dict[name]() for name in names]
+        self.generator = chain(*args)
         super().__init__(min_num_env, max_num_env, num_collect, num_iterate)
         self.tuning_results = dict()  # TODO: Write to file the result at the end.
 

@@ -35,7 +35,7 @@ class SHMVectorMixin(VectorMixin, metaclass=ABCMeta):
             self._command_buffer,
             self.cmd_attr_dict,
         ) = _create_buffer_from_sample(
-            np.array([1] * (1 + max_data), dtype=np.int32), max_workers
+            np.array([[1] * (1 + max_data)], dtype=np.int32), max_workers
         )
         self._command_buffer.fill(SHMCommand.TERM)
         self._logger = get_logger(self.proc_name)

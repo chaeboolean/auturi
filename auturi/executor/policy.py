@@ -6,9 +6,9 @@ import inspect
 from abc import ABCMeta, abstractmethod
 from typing import Any, Dict
 
-import numpy as np
-
 import auturi.executor.typing as types
+import gym
+import numpy as np
 from auturi.tuner.config import ParallelizationConfig
 
 
@@ -29,6 +29,17 @@ class AuturiPolicy(metaclass=ABCMeta):
     @abstractmethod
     def terminate(self) -> None:
         raise NotImplementedError
+
+    def _validate(self):
+        obs_sample = np.stack([self.observation_space.sample()] * 3)
+        action_sample, _ = self.compute_actions(obs_sample, 0)
+
+        assert action_sample.shape[0] == 3
+
+        if isinstance(self.action_space, gym.spaces.Discrete):
+            assert action_sample.shape == (3, 1)
+        else:
+            assert action_sample.shape == (3, *self.action_space.shape)
 
 
 class AuturiPolicyHandler(metaclass=ABCMeta):

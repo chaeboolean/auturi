@@ -1,8 +1,7 @@
 from typing import List
 
-import numpy as np
-
 import auturi.executor.typing as types
+import numpy as np
 from auturi.executor.environment import AuturiSerialEnv
 from auturi.executor.shm.constant import EnvCommand, EnvStateEnum
 from auturi.executor.shm.mp_mixin import SHMProcLoopMixin
@@ -71,7 +70,9 @@ class SHMEnvProc(SHMProcLoopMixin):
         for key_, trajectories in local_rollouts.items():
             roll_buffer = self.rollout_buffers[key_][1]
 
-            np.copyto(roll_buffer[data_list[0] : data_list[1]], trajectories)
+            end_idx = min(len(roll_buffer), data_list[1])
+            num_to_copy = end_idx - data_list[0]
+            np.copyto(roll_buffer[data_list[0] : end_idx], trajectories[:num_to_copy])
 
         self.reply(cmd)
 
@@ -158,5 +159,4 @@ class SHMEnvProc(SHMProcLoopMixin):
 
     def _stop_loop_handler(self) -> bool:
         self._set_env_state(EnvStateEnum.STOPPED)
-        self._logger.debug("Escaped the loop.")
         super()._stop_loop_handler()

@@ -1,16 +1,13 @@
 from typing import Any, Dict
 
-import numpy as np
-
 import auturi.executor.shm.util as util
 import auturi.executor.typing as types
+import numpy as np
 from auturi.executor.policy import AuturiVectorPolicy
 from auturi.executor.shm.constant import EnvStateEnum, PolicyCommand, PolicyStateEnum
 from auturi.executor.shm.mp_mixin import SHMVectorLoopMixin
 from auturi.executor.shm.policy_proc import SHMPolicyProc
 from auturi.tuner.config import ParallelizationConfig
-
-MAX_POLICY = 16
 
 
 class SHMVectorPolicy(AuturiVectorPolicy, SHMVectorLoopMixin):
@@ -22,6 +19,7 @@ class SHMVectorPolicy(AuturiVectorPolicy, SHMVectorLoopMixin):
         policy_kwargs: Dict[str, Any],
         base_buffers: Dict[str, Any],
         base_buffer_attr: Dict[str, Any],
+        max_num_policy: int,
     ):
         self.base_buffers = base_buffers
         self.base_buffer_attr = base_buffer_attr
@@ -31,7 +29,9 @@ class SHMVectorPolicy(AuturiVectorPolicy, SHMVectorLoopMixin):
             self.__policy,
             self.policy_buffer,
             policy_attr,
-        ) = util._create_buffer_from_sample(sample_=1, max_num=MAX_POLICY)
+        ) = util._create_buffer_from_sample(
+            sample_=np.array([[1]]), max_num=max_num_policy
+        )
         self.base_buffer_attr["policy"] = policy_attr
         self.policy_buffer.fill(PolicyStateEnum.STOPPED)
 
@@ -41,7 +41,7 @@ class SHMVectorPolicy(AuturiVectorPolicy, SHMVectorLoopMixin):
         self._env_mask_for_actor = None
 
         AuturiVectorPolicy.__init__(self, actor_id, policy_cls, policy_kwargs)
-        SHMVectorLoopMixin.__init__(self, MAX_POLICY, max_data=3)
+        SHMVectorLoopMixin.__init__(self, max_num_policy, max_data=3)
 
     @property
     def proc_name(self) -> str:

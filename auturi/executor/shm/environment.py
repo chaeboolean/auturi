@@ -1,17 +1,13 @@
 import itertools
 from typing import Any, Callable, Dict, List, Optional
 
-import numpy as np
-
 import auturi.executor.typing as types
+import numpy as np
 from auturi.executor.environment import AuturiVectorEnv
 from auturi.executor.shm.constant import EnvCommand
 from auturi.executor.shm.env_proc import EnvStateEnum, SHMEnvProc
 from auturi.executor.shm.mp_mixin import SHMVectorLoopMixin
-from auturi.executor.shm.util import (
-    WaitingQueue,
-    wait,
-)
+from auturi.executor.shm.util import WaitingQueue, wait
 
 MAX_ENV_NUM = 64
 
@@ -31,6 +27,7 @@ class SHMParallelEnv(AuturiVectorEnv, SHMVectorLoopMixin):
         base_buffer_attr: Dict[str, Any],
         rollout_buffers: Dict[str, Any],
         rollout_buffer_attr: Dict[str, Any],
+        max_num_envs: int,
     ):
         self.base_buffers = base_buffers
         self.base_buffer_attr = base_buffer_attr
@@ -47,7 +44,7 @@ class SHMParallelEnv(AuturiVectorEnv, SHMVectorLoopMixin):
         # should be intialized when reconfigure
 
         AuturiVectorEnv.__init__(self, actor_id, env_fns)
-        SHMVectorLoopMixin.__init__(self, MAX_ENV_NUM)
+        SHMVectorLoopMixin.__init__(self, max_num_envs)
 
     @property
     def proc_name(self) -> str:
@@ -116,7 +113,6 @@ class SHMParallelEnv(AuturiVectorEnv, SHMVectorLoopMixin):
             prev_ctr = cur_ctr
 
         self.sync()
-
         return self._aggregate_buffer()
 
     def _aggregate_buffer(self) -> Dict[str, np.ndarray]:

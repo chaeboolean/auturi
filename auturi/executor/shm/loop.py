@@ -1,10 +1,9 @@
 import time
 from typing import Any, Dict, List, Tuple
 
-import numpy as np
-
 import auturi.executor.shm.util as util
 import auturi.executor.typing as types
+import numpy as np
 from auturi.executor.loop import MultiLoopHandler, NestedLoopHandler, SimpleLoopHandler
 from auturi.executor.shm.constant import ActorCommand
 from auturi.executor.shm.environment import SHMParallelEnv
@@ -21,11 +20,13 @@ class SHMNestedLoopHandler(NestedLoopHandler):
         policy_cls,
         policy_kwargs,
         max_num_envs,
+        max_num_policy,
         num_rollouts,
         rollout_buffer_attr=None,
     ):
         super().__init__(loop_id, env_fns, policy_cls, policy_kwargs)
-
+        self.max_num_envs = max_num_envs
+        self.max_num_policy = max_num_policy
         self.base_buffers, self.base_buffer_attr = util.create_data_buffer_from_env(
             env_fns[0], max_num_envs
         )
@@ -43,6 +44,7 @@ class SHMNestedLoopHandler(NestedLoopHandler):
             self.base_buffer_attr,
             self.rollout_buffers,
             self.rollout_buffer_attr,
+            self.max_num_envs,
         )
 
     def _create_policy_handler(self):
@@ -52,6 +54,7 @@ class SHMNestedLoopHandler(NestedLoopHandler):
             self.policy_kwargs,
             self.base_buffers,
             self.base_buffer_attr,
+            self.max_num_policy,
         )
 
     def terminate(self):
@@ -121,8 +124,8 @@ class SimpleLoopProc(SHMProcMixin):
             roll_buffer = self.rollout_buffers[key_][1]
 
             # TODO: stack first
-            # print(key_, f"=> {trajectories.shape} , len({self._start_idx}, {self._end_idx})")
             np.copyto(roll_buffer[self._start_idx : self._end_idx], trajectories)
+            # print(key_, f" after copy to buffer => {roll_buffer[self._start_idx : self._end_idx]}")
 
         self.reply(cmd)
 
@@ -199,12 +202,16 @@ class SHMMultiLoopHandler(MultiLoopHandler, SHMVectorMixin):
         end_time = time.perf_counter()
 
         # Aggregate
-        return None, AuturiMetric(self.num_collect, end_time - start_time)
+
+        return self._aggregate_rollouts(), AuturiMetric(
+            self.num_collect, end_time - start_time
+        )
 
     def _aggregate_rollouts(self) -> Dict[str, np.ndarray]:
         ret_dict = dict()
         for key, tuple_ in self.rollout_buffers.items():
             ret_dict[key] = tuple_[1]
+            print(key, f" Handler Side => {tuple_[1]}")
 
         return ret_dict
 

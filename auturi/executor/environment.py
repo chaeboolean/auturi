@@ -5,9 +5,9 @@ Typings related to Environment: AuturiEnv, AuturiSerialEnv, AuturiVecEnv.
 from abc import ABCMeta, abstractmethod
 from typing import Callable, Dict, List, Optional, Tuple
 
-import numpy as np
-
 import auturi.executor.typing as types
+import numpy as np
+from auturi.executor.gym_utils import get_action_sample
 from auturi.executor.vector_utils import aggregate_partial
 from auturi.tuner.config import ParallelizationConfig
 
@@ -54,6 +54,12 @@ class AuturiEnv(metaclass=ABCMeta):
         self.action_space = dummy_env.action_space
         self.metadata = dummy_env.metadata
 
+    def _validate(self):
+        self.reset()
+        action_sample = get_action_sample(self.action_space, 1)
+        obs_sample = self.step(action_sample, [action_sample])
+        assert obs_sample.shape == (1, *self.observation_space.shape)
+
 
 class AuturiSerialEnv(AuturiEnv):
     """Abstraction for handling sequential execution of multiple environments.
@@ -76,7 +82,7 @@ class AuturiSerialEnv(AuturiEnv):
 
     def reset(self) -> np.ndarray:
         obs_list = [env.reset() for _, env in self._working_envs()]
-        return np.stack(obs_list)
+        return np.concatenate(obs_list)
 
     def seed(self, seed) -> None:
         for eid, env in self._working_envs():
@@ -100,17 +106,20 @@ class AuturiSerialEnv(AuturiEnv):
         """
         obs_list = []
         for eid, env in self._working_envs():
-            artifacts_ = [elem[eid - self.start_idx, :] for elem in action_artifacts]
-            obs = env.step(actions[eid - self.start_idx, :], artifacts_)
+            lid_ = eid - self.start_idx
+            slice_ = slice(lid_, lid_ + 1)
+            artifacts_ = [elem[slice_, :] for elem in action_artifacts]
+            obs = env.step(actions[slice_, :], artifacts_)
             obs_list += [obs]
 
-        return np.stack(obs_list)
+        return np.concatenate(obs_list)
 
     def aggregate_rollouts(self) -> types.Rollouts:
         rollouts_from_each_env = [
             env.aggregate_rollouts() for _, env in self._working_envs()
         ]
-        res = aggregate_partial(rollouts_from_each_env, to_stack=True, to_extend=True)
+
+        res = aggregate_partial(rollouts_from_each_env, to_stack=False, to_extend=True)
         return res
 
     def _working_envs(self) -> Tuple[int, AuturiEnv]:
