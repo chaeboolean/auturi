@@ -110,6 +110,7 @@ class SHMVectorMixin(VectorMixin, metaclass=ABCMeta):
         self._wait_cmd_done(worker_id)
 
     def _terminate_worker(self, worker_id: int, worker: mp.Process) -> None:
+        self._logger.info(f"Join worker={worker_id} pid={worker.pid}")
         self.request(SHMCommand.TERM, worker_id=worker_id)
         self._wait_cmd_done(worker_id)
         worker.join()
@@ -117,6 +118,7 @@ class SHMVectorMixin(VectorMixin, metaclass=ABCMeta):
         self._logger.info(f"Join worker={worker_id} pid={worker.pid}")
 
     def terminate(self) -> None:
+        print("\n\nWHO CALL THIS???? ")
         self.request(SHMCommand.TERM)
         for _, worker in self.workers():
             worker.join()

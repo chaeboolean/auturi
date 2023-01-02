@@ -132,6 +132,7 @@ class SimpleLoopProc(SHMProcMixin):
         self.reply(cmd)
 
     def _term_handler(self, cmd: int, data_list: List[int]) -> None:
+        self._logger.info("TERM handler is called...")
         self._loop_handler.terminate()
         super()._term_handler(cmd, data_list)
 
@@ -161,10 +162,11 @@ class SHMMultiLoopHandler(MultiLoopHandler, SHMVectorMixin):
     def reconfigure(
         self, config: ParallelizationConfig, model: types.PolicyModel
     ) -> None:
-        self._logger.info(f"\n\n============================reconfigure {config}\n")
+        self._logger.info(f" Reconfigure {config}\n")
         self.num_collect = config.num_collect
         util.copy_config_to_buffer(config, self._command_buffer[:, 1:])
         self.reconfigure_workers(config.num_actors, config=config, model=model)
+        self._logger.info("Called VectorMixin.reconfigure_workers")
         self.sync()  # sync
 
     def _create_worker(self, worker_id: int) -> SimpleLoopProc:
@@ -190,10 +192,6 @@ class SHMMultiLoopHandler(MultiLoopHandler, SHMVectorMixin):
 
         self._logger.info(f"RECONFIGURE({worker_id})")
 
-    def _terminate_worker(self, worker_id: int, worker: SimpleLoopProc) -> None:
-        #SHMVectorMixin.terminate_single_worker(self, worker_id, worker)
-        SHMVectorMixin.terminate(self)
-        self._logger.info(f"Join worker={worker_id} pid={worker.pid}")
 
     def run(self) -> Tuple[Dict[str, Any], AuturiMetric]:
         self._logger.info(f"\n\n============================RUN\n")
@@ -219,6 +217,8 @@ class SHMMultiLoopHandler(MultiLoopHandler, SHMVectorMixin):
         return ret_dict
 
     def terminate(self):
+        self._logger.info("Handler terminates")
+
         SHMVectorMixin.terminate(self)
         for _, tuple_ in self.rollout_buffers.items():
             tuple_[0].unlink()

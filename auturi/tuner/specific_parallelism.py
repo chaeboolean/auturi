@@ -5,6 +5,7 @@ from typing import Callable, Optional
 
 from auturi.tuner.base_tuner import AuturiTuner
 from auturi.tuner.config import ActorConfig, ParallelizationConfig
+from datetime import datetime
 
 
 ENV_PARALLEL = "E"
@@ -46,21 +47,23 @@ class SpecificParallelismComparator(AuturiTuner):
         self.generator = chain(*args)
         self.tuning_results = dict()  # TODO: Write to file the result at the end.
         self.validator = (lambda _: True) if validator is None else validator
+        self.max_policy_num = max_policy_num
         self.out_file = out_file
         super().__init__(min_num_env, max_num_env, num_collect, num_iterate)
 
     def _generate_next(self):
         while True:
             parallelism, next_config = next(self.generator)
-            if self.validator(next_config) or parallelism == LOOP_PARALLEL:
+            if self.validator(next_config) or \
+                parallelism == LOOP_PARALLEL and (next_config.num_actors > self.max_policy_num):
                 return next_config
 
     def _update_tuner(self, config, res):
         mean_metric = res[1]
         self.tuning_results[hash(config)] = (config, mean_metric)
 
-        out_log = f'\n\n{"=" * 20}\n{config}\n'
-        out_log += f"Mean Result: {mean_metric.elapsed} sec\n"
+        out_log = f'\n\n{"=" * 20}\n{datetime.now().strftime("%m/%d/%Y, %H:%M:%S")}\n'
+        out_log += f"{config}\nMean Result: {mean_metric.elapsed} sec\n"
         out_log += f"{res[0]}\n"
         
         if self.out_file is not None:
