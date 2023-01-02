@@ -162,6 +162,7 @@ class SHMMultiLoopHandler(MultiLoopHandler, SHMVectorMixin):
         self, config: ParallelizationConfig, model: types.PolicyModel
     ) -> None:
         self._logger.info(f"\n\n============================reconfigure {config}\n")
+        self.num_collect = config.num_collect
         util.copy_config_to_buffer(config, self._command_buffer[:, 1:])
         self.reconfigure_workers(config.num_actors, config=config, model=model)
         self.sync()  # sync
@@ -190,7 +191,8 @@ class SHMMultiLoopHandler(MultiLoopHandler, SHMVectorMixin):
         self._logger.info(f"RECONFIGURE({worker_id})")
 
     def _terminate_worker(self, worker_id: int, worker: SimpleLoopProc) -> None:
-        SHMVectorMixin.terminate_single_worker(self, worker_id, worker)
+        #SHMVectorMixin.terminate_single_worker(self, worker_id, worker)
+        SHMVectorMixin.terminate(self)
         self._logger.info(f"Join worker={worker_id} pid={worker.pid}")
 
     def run(self) -> Tuple[Dict[str, Any], AuturiMetric]:

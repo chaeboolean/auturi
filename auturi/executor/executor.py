@@ -12,7 +12,7 @@ from auturi.executor.typing import PolicyModel
 from auturi.logger import get_logger
 from auturi.tuner import ActorConfig, AuturiMetric, AuturiTuner, ParallelizationConfig
 
-logger = get_logger("Exeuctor")
+logger = get_logger("Executor")
 
 
 def _is_simple_loop(actor_config: ActorConfig):
@@ -117,7 +117,7 @@ class AuturiExecutor(metaclass=ABCMeta):
         self.reconfigure(next_config, model)
 
         rollouts, metric = self._loop_handler.run()
-
+        print("Executor Run Finish..")
         # Give result to tuner.
         self.tuner.feedback(metric)
         return rollouts, metric

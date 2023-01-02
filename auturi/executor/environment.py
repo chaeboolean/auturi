@@ -56,9 +56,16 @@ class AuturiEnv(metaclass=ABCMeta):
         self.metadata = dummy_env.metadata
 
     def _validate(self, observation_space, action_space):
+        #Aprint(f"===obs space: {observation_space.shape}, action space: {action_space}")
+        
         reset_obs = self.reset()
+        #Aprint(f"reset_obs => {reset_obs.shape}")
         action_sample = get_action_sample(action_space, 1)
+        #print(f"action_sample => {action_sample.shape}")
+
         obs_sample = self.step(action_sample, [action_sample])
+        #Aprint(f"obs_sample => {obs_sample.shape}")
+
         assert reset_obs.shape == (1, *observation_space.shape)
         assert obs_sample.shape == (1, *observation_space.shape)
 
@@ -120,6 +127,8 @@ class AuturiSerialEnv(AuturiEnv):
         rollouts_from_each_env = [
             env.aggregate_rollouts() for _, env in self._working_envs()
         ]
+        # obsbuff = rollouts_from_each_env[0]["obs"]
+        # print(" obs buffer ----> ", len(obsbuff), obsbuff[0].shape)
 
         res = aggregate_partial(rollouts_from_each_env, to_stack=False, to_extend=True)
         return res
