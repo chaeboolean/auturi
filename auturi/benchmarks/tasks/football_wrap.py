@@ -16,6 +16,7 @@ class FootballEnvWrapper(AuturiEnv):
         self.setup_dummy_env(self.env)
         self.storage = defaultdict(list)
         self.artifacts_samples = [np.array([1.20])]
+        self._validate(self.observation_space, self.action_space)
 
     def step(self, action, artifacts):
         if not isinstance(action, np.ndarray):
@@ -53,6 +54,7 @@ class FootballPolicyWrapper(AuturiPolicy):
         dummy_env = make_env(task_id, rank=0)()
         raw_shape = dummy_env.observation_space.shape
         obs_shape = raw_shape[1:] if len(raw_shape) == 4 else raw_shape
+        self._validate(dummy_env.observation_space, dummy_env.action_space)
         dummy_env.close()
 
         self.policy = FootballPolicy(
@@ -84,4 +86,6 @@ class FootballPolicyWrapper(AuturiPolicy):
         pass
 
 
-task_id = "academy_3_vs_1_with_keeper"
+# task_id = "academy_3_vs_1_with_keeper"
+# env = FootballEnvWrapper(task_id, rank=0)
+# policy = FootballPolicyWrapper(task_id, idx=0)

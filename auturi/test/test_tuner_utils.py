@@ -42,7 +42,9 @@ def test_tuner_config():
 def test_tuner_method():
     config = ParallelizationConfig.create(
         [
-            ActorConfig(num_envs=2, num_parallel=2, num_policy=2, batch_size=1, num_collect=100),
+            ActorConfig(
+                num_envs=2, num_parallel=2, num_policy=2, batch_size=1, num_collect=100
+            ),
             ActorConfig(num_envs=2, batch_size=2, num_collect=50),
         ]
     )

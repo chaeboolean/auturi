@@ -1,7 +1,8 @@
 from typing import List
 
-import auturi.executor.shm.util as util
 import numpy as np
+
+import auturi.executor.shm.util as util
 from auturi.executor.policy import AuturiPolicy
 from auturi.executor.shm.constant import EnvStateEnum, PolicyCommand, PolicyStateEnum
 from auturi.executor.shm.mp_mixin import SHMProcLoopMixin
@@ -99,6 +100,7 @@ class SHMPolicyProc(SHMProcLoopMixin):
 
             # Write actions and the artifacts
             self.get_visible_buffer(self.action_buffer)[assigned_envs] = actions
+
             self.get_visible_buffer(self.artifact_buffer)[assigned_envs] = artifacts[0]
 
             # state transition

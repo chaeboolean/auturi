@@ -1,8 +1,9 @@
 from typing import Any, Dict
 
+import numpy as np
+
 import auturi.executor.shm.util as util
 import auturi.executor.typing as types
-import numpy as np
 from auturi.executor.policy import AuturiVectorPolicy
 from auturi.executor.shm.constant import EnvStateEnum, PolicyCommand, PolicyStateEnum
 from auturi.executor.shm.mp_mixin import SHMVectorLoopMixin

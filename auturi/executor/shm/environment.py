@@ -1,8 +1,9 @@
 import itertools
 from typing import Any, Callable, Dict, List, Optional
 
-import auturi.executor.typing as types
 import numpy as np
+
+import auturi.executor.typing as types
 from auturi.executor.environment import AuturiVectorEnv
 from auturi.executor.shm.constant import EnvCommand
 from auturi.executor.shm.env_proc import EnvStateEnum, SHMEnvProc
