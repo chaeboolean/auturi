@@ -34,7 +34,7 @@ def create_vector_env_handler(num_envs, num_parallel, num_collect, is_discrete):
     env_fns = utils.create_env_fns(num_envs, is_discrete)
 
     # borrow only intialization function
-    loop_handler = SHMNestedLoopHandler(0, env_fns, None, None, num_envs, num_collect)
+    loop_handler = SHMNestedLoopHandler(0, env_fns, None, None, num_envs, 1, num_collect)
     env_handler = loop_handler._create_env_handler()
 
     config = ActorConfig(
