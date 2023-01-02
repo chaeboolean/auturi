@@ -1,7 +1,8 @@
 from typing import List
 
-import auturi.executor.typing as types
 import numpy as np
+
+import auturi.executor.typing as types
 from auturi.executor.environment import AuturiSerialEnv
 from auturi.executor.shm.constant import EnvCommand, EnvStateEnum
 from auturi.executor.shm.mp_mixin import SHMProcLoopMixin
@@ -77,13 +78,14 @@ class SHMEnvProc(SHMProcLoopMixin):
         self.reply(cmd)
 
     def _reset_curr_env_id(self):
-        self._curr_env_id = self.env.start_idx - 1
+        self._curr_env_id = self.env.start_idx
 
-    def _get_curr_env_id(self):
+    def _update_curr_env_id(self):
         self._curr_env_id += 1
         if self._curr_env_id >= self.env.end_idx:
-            self._curr_env_id = self.env.start_idx
+            self._reset_curr_env_id()
 
+    def _get_curr_env_id(self):
         return self._curr_env_id
 
     def _step_loop_once(self, is_first: bool) -> None:
@@ -108,7 +110,8 @@ class SHMEnvProc(SHMProcLoopMixin):
             self._logger.debug(f"env_{curr_id}.step({action.flat[0]}) => {obs.flat[0]}")
 
             self.insert_obs_buffer(obs, curr_id)
-            self._set_env_state(EnvStateEnum.STEP_DONE)
+            self._set_env_state(EnvStateEnum.STEP_DONE, curr_id)
+            self._update_curr_env_id()
 
     def insert_obs_buffer(self, obs, curr_id=None) -> None:
         slice_ = (
@@ -119,11 +122,6 @@ class SHMEnvProc(SHMProcLoopMixin):
         self.obs_buffer[slice_, :] = obs
 
     def get_actions(self, curr_id=None) -> types.ActionTuple:
-        # if curr_id is not None:
-        #     action = self.action_buffer[curr_id]
-        #     artifacts = self.artifact_buffer[curr_id]
-        #     return action, [artifacts]
-
         slice_ = (
             slice(curr_id, curr_id + 1)
             if curr_id is not None

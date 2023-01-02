@@ -1,9 +1,10 @@
 import time
 from typing import Any, Dict, List, Tuple
 
+import numpy as np
+
 import auturi.executor.shm.util as util
 import auturi.executor.typing as types
-import numpy as np
 from auturi.executor.loop import MultiLoopHandler, NestedLoopHandler, SimpleLoopHandler
 from auturi.executor.shm.constant import ActorCommand
 from auturi.executor.shm.environment import SHMParallelEnv
@@ -125,7 +126,8 @@ class SimpleLoopProc(SHMProcMixin):
 
             # TODO: stack first
             np.copyto(roll_buffer[self._start_idx : self._end_idx], trajectories)
-            # print(key_, f" after copy to buffer => {roll_buffer[self._start_idx : self._end_idx]}")
+            # print(key_, type(self.rollout_buffers[key_][0]), \
+            #     self.rollout_buffers[key_][0].name, f" after copy to buffer => {roll_buffer[self._start_idx : self._end_idx]}")
 
         self.reply(cmd)
 
@@ -162,7 +164,7 @@ class SHMMultiLoopHandler(MultiLoopHandler, SHMVectorMixin):
         self._logger.info(f"\n\n============================reconfigure {config}\n")
         util.copy_config_to_buffer(config, self._command_buffer[:, 1:])
         self.reconfigure_workers(config.num_actors, config=config, model=model)
-        self._wait_cmd_done()  # sync
+        self.sync()  # sync
 
     def _create_worker(self, worker_id: int) -> SimpleLoopProc:
         kwargs = {
@@ -198,20 +200,19 @@ class SHMMultiLoopHandler(MultiLoopHandler, SHMVectorMixin):
         self.request(ActorCommand.RUN)
         self._logger.debug("Set command RUN")
 
-        self._wait_cmd_done()
+        self.sync()
+        rollouts = self._aggregate_rollouts()
+        self.sync()
         end_time = time.perf_counter()
 
         # Aggregate
+        return rollouts, AuturiMetric(self.num_collect, end_time - start_time)
 
-        return self._aggregate_rollouts(), AuturiMetric(
-            self.num_collect, end_time - start_time
-        )
-
+    # TODO: Does not copy properly. Why?
     def _aggregate_rollouts(self) -> Dict[str, np.ndarray]:
         ret_dict = dict()
         for key, tuple_ in self.rollout_buffers.items():
             ret_dict[key] = tuple_[1]
-            print(key, f" Handler Side => {tuple_[1]}")
 
         return ret_dict
 

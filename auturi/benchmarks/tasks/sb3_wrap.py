@@ -51,16 +51,19 @@ class SB3EnvWrapper(AuturiEnv):
         # self.env = gym.make("HalfCheetah-v3")
         self.setup_dummy_env(self.env)
         self.storage = defaultdict(list)
-        self.artifacts_samples = [np.array([1.1, 1.4])]
+        self.artifacts_samples = [np.array([[1.1, 1.4]])]
+
+        self._validate(self.observation_space, self.action_space)
 
     def step(self, action, artifacts):
         # if action.ndim == self.action_space.sample().ndim:
         #     action = np.expand_dims(action, -1)
-        if not isinstance(action, np.ndarray):
-            action = np.array([action])
 
-        obs, reward, done, _ = self.env.step(action)
-        obs, reward, done = obs[0], reward[0], done[0]
+        action_ = action
+        if isinstance(self.action_space, gym.spaces.Discrete):
+            action_ = action[0]
+
+        obs, reward, done, _ = self.env.step(action_)
 
         self.storage["obs"].append(obs)
         self.storage["action"].append(action)
@@ -72,7 +75,7 @@ class SB3EnvWrapper(AuturiEnv):
 
     def reset(self):
         self.storage.clear()
-        return self.env.reset()[0]
+        return self.env.reset()
 
     def seed(self, seed):
         self.env.seed(seed + self.rank)
@@ -94,6 +97,8 @@ class SB3PolicyWrapper(AuturiPolicy):
             dummy_env.observation_space, dummy_env.action_space, lambda _: 0.001
         )
         self.policy.set_training_mode(False)
+        self._validate(dummy_env.observation_space, dummy_env.action_space)
+
         dummy_env.close()
 
     def load_model(self, model, device):
@@ -113,3 +118,8 @@ class SB3PolicyWrapper(AuturiPolicy):
 
     def terminate(self):
         pass
+
+
+# task_id = "HalfCheetah-v3"
+# env = SB3EnvWrapper(task_id, rank=0)
+# policy = SB3PolicyWrapper(task_id, idx=0)

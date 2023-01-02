@@ -1,7 +1,8 @@
 from contextlib import contextmanager
 
-import auturi.test.utils as utils
 import pytest
+
+import auturi.test.utils as utils
 from auturi.executor.environment import AuturiLocalEnv
 from auturi.executor.shm.loop import SHMNestedLoopHandler
 from auturi.tuner.config import ActorConfig, ParallelizationConfig

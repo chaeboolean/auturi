@@ -80,11 +80,11 @@ class AuturiSingleLoopHandler(AuturiLoopHandler, metaclass=ABCMeta):
 
         self.policy_handler.stop_loop()
         self.env_handler.stop_loop()
+
+        rollouts = self.env_handler.aggregate_rollouts()
         end_time = time.perf_counter()
 
-        return self.env_handler.aggregate_rollouts(), AuturiMetric(
-            self.num_collect, end_time - start_time
-        )
+        return rollouts, AuturiMetric(self.num_collect, end_time - start_time)
 
     def terminate(self):
         self.policy_handler.terminate()

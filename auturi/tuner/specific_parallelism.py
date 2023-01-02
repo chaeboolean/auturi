@@ -31,7 +31,7 @@ class SpecificParallelismComparator(AuturiTuner):
         gen_dict = {
             "E": partial(_e_generator, min_num_env, num_collect),
             "L": partial(_l_generator, min_num_env, num_collect, max_policy_num),
-            "P": partial(_p_generator, min_num_env, num_collect, max_policy_num),
+            "E+P": partial(_e_p_generator, min_num_env, num_collect, max_policy_num),
         }
         args = [gen_dict[name]() for name in names]
         self.generator = chain(*args)
@@ -90,24 +90,34 @@ def _l_generator(num_envs, num_collect, max_num_policy):
         num_loop *= 2
 
 
-def _p_generator(num_envs, num_collect, max_num_policy):
-    def _gen_actor_config(num_policy, device):
-        batch_size = num_envs // num_policy
-        return ActorConfig(
-            num_envs=num_envs,
-            num_policy=num_policy,
-            num_parallel=1,
-            batch_size=batch_size,
-            policy_device=device,
-            num_collect=num_collect,
-        )
+def _e_p_generator(num_envs, num_collect, max_num_policy):
+    for num_parallel in _iter_to_max(max_num=num_envs, mode_="two"):
+        for num_policy in range(1, max_num_policy + 1):
+            for batch_size in _iter_to_max(max_num=num_envs // num_policy, mode_="two"):
+                for device in ["cpu", "cuda"]:
+                    try:
+                        yield ParallelizationConfig.create(
+                            [
+                                ActorConfig(
+                                    num_envs=num_envs,
+                                    num_policy=num_policy,
+                                    num_parallel=num_parallel,
+                                    batch_size=batch_size,
+                                    policy_device=device,
+                                    num_collect=num_collect,
+                                )
+                            ]
+                        )
 
-    num_policy = 1
-    while num_policy <= num_envs:
-        yield ParallelizationConfig.create([_gen_actor_config(num_policy, "cpu")])
-        if num_policy <= max_num_policy:
-            yield ParallelizationConfig.create(
-                [_gen_actor_config(num_policy, "cuda:0")]
-            )
+                    except AssertionError:
+                        continue
 
-        num_policy *= 2
+
+def _iter_to_max(max_num, min_num=1, mode_="incr"):
+    num = min_num
+    while num <= max_num:
+        yield num
+        if mode_ == "two":
+            num *= 2
+        else:
+            num += 1

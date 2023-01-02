@@ -8,6 +8,7 @@ import gym
 import numpy as np
 import ray
 import torch
+
 from auturi.executor.environment import AuturiEnv
 from auturi.executor.gym_utils import get_action_sample
 from auturi.executor.policy import AuturiPolicy
@@ -84,7 +85,7 @@ class DumbEnv(AuturiEnv):
 
         self.storage = defaultdict(list)
 
-        self._validate()
+        self._validate(self.observation_space, self.action_space)
 
     def step(self, action, _):
         time.sleep(self.sleep)
@@ -139,7 +140,7 @@ class DumbPolicy(AuturiPolicy):
         self.observation_space, self.action_space = make_space(is_action_discrete)
 
         self.action_sample = get_action_sample(self.action_space, 1)
-        self._validate()
+        self._validate(self.observation_space, self.action_space)
 
     def load_model(self, model, device):
         self.device = device

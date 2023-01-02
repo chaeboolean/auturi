@@ -5,8 +5,9 @@ Typings related to Environment: AuturiEnv, AuturiSerialEnv, AuturiVecEnv.
 from abc import ABCMeta, abstractmethod
 from typing import Callable, Dict, List, Optional, Tuple
 
-import auturi.executor.typing as types
 import numpy as np
+
+import auturi.executor.typing as types
 from auturi.executor.gym_utils import get_action_sample
 from auturi.executor.vector_utils import aggregate_partial
 from auturi.tuner.config import ParallelizationConfig
@@ -54,11 +55,12 @@ class AuturiEnv(metaclass=ABCMeta):
         self.action_space = dummy_env.action_space
         self.metadata = dummy_env.metadata
 
-    def _validate(self):
-        self.reset()
-        action_sample = get_action_sample(self.action_space, 1)
+    def _validate(self, observation_space, action_space):
+        reset_obs = self.reset()
+        action_sample = get_action_sample(action_space, 1)
         obs_sample = self.step(action_sample, [action_sample])
-        assert obs_sample.shape == (1, *self.observation_space.shape)
+        assert reset_obs.shape == (1, *observation_space.shape)
+        assert obs_sample.shape == (1, *observation_space.shape)
 
 
 class AuturiSerialEnv(AuturiEnv):

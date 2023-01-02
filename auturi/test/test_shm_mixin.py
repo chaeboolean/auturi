@@ -3,6 +3,7 @@ from multiprocessing import shared_memory as shm
 from typing import List
 
 import numpy as np
+
 from auturi.executor.shm.mp_mixin import SHMProcLoopMixin, SHMVectorLoopMixin
 
 RESET = 11

@@ -9,12 +9,17 @@ from auturi.executor.loop import (
     SimpleLoopHandler,
 )
 from auturi.executor.typing import PolicyModel
+from auturi.logger import get_logger
 from auturi.tuner import ActorConfig, AuturiMetric, AuturiTuner, ParallelizationConfig
+
+logger = get_logger("Exeuctor")
 
 
 def _is_simple_loop(actor_config: ActorConfig):
-    return (actor_config.num_policy == 1) and (
-        actor_config.batch_size == actor_config.num_envs
+    return (
+        (actor_config.num_policy == 1)
+        and (actor_config.batch_size == actor_config.num_envs)
+        and (actor_config.num_parallel == 1)
     )
 
 
@@ -69,6 +74,8 @@ class AuturiExecutor(metaclass=ABCMeta):
         else:
             if prev_handler is not None:
                 prev_handler.terminate()
+
+            logger.debug(f"Create {cls}")
             return create_fn()
 
     def get_loop_handler(self, config):
