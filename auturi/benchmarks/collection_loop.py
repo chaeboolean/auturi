@@ -124,7 +124,4 @@ if __name__ == "__main__":
         with open(args.tuner_log_path, "a") as f:
             f.write(str(args) + "\n")
     
-    with open(args.tuner_log_path, "a") as f:
-        f.write(str(args) + "\n")
-    
     run(args)
