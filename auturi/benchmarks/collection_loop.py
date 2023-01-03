@@ -10,7 +10,6 @@ from auturi.benchmarks.tasks.football_wrap import (
 from auturi.benchmarks.tasks.sb3_wrap import SB3EnvWrapper, SB3PolicyWrapper
 from auturi.executor import create_executor
 from auturi.tuner import ActorConfig, ParallelizationConfig, create_tuner_with_config
-from auturi.tuner.grid_search import GridSearchTuner
 from auturi.tuner.specific_parallelism import SpecificParallelismComparator
 
 
@@ -117,5 +116,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
     print("\n\n", "=" * 20)
     print(args)
+    
+    with open(args.tuner_log_path, "a") as f:
+        f.write(str(args) + "\n")
     
     run(args)
