@@ -17,14 +17,14 @@ def create_envs(cls, task_id, rank, dummy=None):
     return cls(task_id, rank)
 
 
-def make_naive_tuner(args):
+def make_naive_tuner(args, _):
     num_loop = 1
 
     subproc_config = ActorConfig(
         num_envs=args.num_envs // num_loop,
-        num_policy=1,
-        num_parallel=2,
-        batch_size=args.num_envs // num_loop,
+        num_policy=8,
+        num_parallel=args.num_envs,
+        batch_size=args.num_envs // 8,
         num_collect=args.num_collect // num_loop,
         policy_device="cuda:0",
     )
@@ -34,7 +34,7 @@ def make_naive_tuner(args):
 
 def make_specfic_tuner(args, validator=None):
     return SpecificParallelismComparator(
-        ["L", "E+P", "E"],
+        [args.tuner_mode],
         args.num_envs,
         args.num_envs,
         max_policy_num=8,
@@ -113,9 +113,16 @@ if __name__ == "__main__":
         "--tuner-log-path", type=str, default=None, help="Log file path."
     )
 
+    parser.add_argument("--tuner-mode", help="Tuner Mode", type=str, default="dummy", choices=["L", "E+P"])
+
+
     args = parser.parse_args()
     print("\n\n", "=" * 20)
     print(args)
+
+    if args.tuner_log_path is not None:
+        with open(args.tuner_log_path, "a") as f:
+            f.write(str(args) + "\n")
     
     with open(args.tuner_log_path, "a") as f:
         f.write(str(args) + "\n")

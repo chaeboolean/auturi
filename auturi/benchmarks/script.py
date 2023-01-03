@@ -16,8 +16,8 @@ TRIAL_ID = 0
 import re
 import os
 
-AUTURI_PATH = "/home/ooffordable/docker_making/auturi"
-LOG_PATH = "/home/ooffordable/docker_making/log_atc/football_series_0102.txt"
+AUTURI_PATH = "/home/ooffordable/auturi"
+LOG_PATH = "/home/ooffordable/auturi/log_ATC/atari_series_0103.txt"
 
 def check_env_exist(env_name):
     try:
@@ -41,12 +41,12 @@ def incr_trial():
     return TRIAL_ID
 
 
-def try_once(env_name):
+def try_once(env_name, tuner_mode):
     my_env = os.environ
     my_env["CUDA_VISIBLE_DEVICES"] = str(_visible_gpus(1))
     commands = ["python", f"{AUTURI_PATH}/auturi/benchmarks/collection_loop.py", 
-                f"--num-iteration=5", f"--num-envs=64",  f"--env={env_name}", f"--num-collect=1280", 
-                f"--tuner-log-path={LOG_PATH}"]
+                f"--num-iteration=5", f"--num-envs=64",  f"--env={env_name}", f"--num-collect=51200", 
+                f"--tuner-mode={tuner_mode}", f"--tuner-log-path={LOG_PATH}"]
               
 
     print(f"Starting {' '.join(commands)}")
@@ -59,11 +59,11 @@ def try_once(env_name):
 if __name__ == "__main__":    
         
     atari_envs = ["Adventure-v4", "AirRaid-v4", "Alien-v4", "Amidar-v4", "Assault-v4", "Asterix-v4", \
-        "Asteroids-v4", "Atlantis-v4", "BankHeist-v4"]
+        "Asteroids-v4", "Atlantis-v4", "BankHeist-v4", "Pong-v4"]
     
-    for env_name in FootballScenarios:
-        try_once(env_name)
-    
+    for env_name in atari_envs:
+        try_once(env_name, tuner_mode="E+P")
+        try_once(env_name, tuner_mode="L")
         
     # pathname = f"/home/ooffordable/auturi/rl-baselines3-zoo/hyperparams/ppo.yml"
     # with open(pathname) as f:

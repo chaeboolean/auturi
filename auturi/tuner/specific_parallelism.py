@@ -100,8 +100,8 @@ def _l_generator(num_envs, num_collect, max_num_policy):
             num_collect=num_collect_per_loop,
         )
 
-    num_loop = num_envs
-    while num_loop > 1:
+    num_loop = 1
+    while num_loop <= num_envs:
         yield LOOP_PARALLEL, ParallelizationConfig.create(
             [_gen_actor_config(num_loop, "cpu")] * num_loop
         )
@@ -109,12 +109,12 @@ def _l_generator(num_envs, num_collect, max_num_policy):
             yield LOOP_PARALLEL, ParallelizationConfig.create(
                 [_gen_actor_config(num_loop, "cuda:0")] * num_loop
             )
-        num_loop = num_loop // 2
+        num_loop = num_loop * 2
 
 
 def _e_p_generator(num_envs, num_collect, max_num_policy):
-    for num_parallel in _iter_to_max(max_num=num_envs, mode_="two"):
-        for num_policy in range(1, max_num_policy + 1):
+    for num_policy in range(1, max_num_policy + 1):
+        for num_parallel in _iter_to_max(max_num=num_envs, mode_="two"):
             for batch_size in _iter_to_max(max_num=num_envs // num_policy, mode_="two"):
                 for device in ["cpu", "cuda"]:
                     try:
