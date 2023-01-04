@@ -4,6 +4,7 @@
 from abc import ABCMeta, abstractmethod
 from typing import Any, Dict, List, Optional, Tuple
 
+import os
 import numpy as np
 import torch.multiprocessing as _mp
 
@@ -15,6 +16,7 @@ from auturi.executor.shm.constant import SHMCommand
 from auturi.executor.shm.util import _create_buffer_from_sample, set_shm_from_attr, wait
 from auturi.executor.vector_utils import VectorMixin
 from auturi.logger import get_logger
+from auturi.common.chrome_profiler import ProfilerWrapper
 
 BUFFER_COMMAND_IDX = 0
 BUFFER_DATA_OFFSET = 1
@@ -219,6 +221,12 @@ class SHMProcLoopMixin(SHMProcMixin, metaclass=ABCMeta):
     def __init__(self, worker_id: int, cmd_attr_dict: Dict[str, Any]):
         super().__init__(worker_id, cmd_attr_dict)
         self.cmd_handler[SHMCommand.INIT_LOOP] = self._loop_handler
+        self._to_trace = os.getenv("AUTURI_TRACE", None)
+
+    def initialize(self):
+        super().initialize()
+        self._trace_wrapper = ProfilerWrapper(self.proc_name, self._to_trace)
+
 
     def _loop_handler(self, cmd: int, data_list: List[int]):
         """Execute this function from when INIT_LOOP is set until STOP_LOOP is set."""
@@ -245,6 +253,7 @@ class SHMProcLoopMixin(SHMProcMixin, metaclass=ABCMeta):
 
     def _stop_loop_handler(self) -> None:
         """Handler function called when SHMCommand.STOP_LOOP is set."""
+        self._trace_wrapper.dump_stats()
         self.reply(cmd=SHMCommand.STOP_LOOP)
 
     @abstractmethod

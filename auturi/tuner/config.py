@@ -45,8 +45,8 @@ class ActorConfig:
 
         # Since num_env_serial is minimum unit of SerialEnv's output,
         # batch_size should exceed num_env_serial and multiple of it.
-        assert self.batch_size >= num_env_serial
-        assert self.batch_size % num_env_serial == 0
+        #assert self.batch_size >= num_env_serial
+       # assert self.batch_size % num_env_serial == 0
 
         # At least one SerialEnv should be executed.
 

@@ -1,17 +1,19 @@
 import argparse
 import functools
+import os
 
 # from auturi.benchmarks.tasks.circuit_wrap import CircuitEnvWrapper, CircuitPolicyWrapper
-from auturi.benchmarks.tasks.football_wrap import (
-    FootballEnvWrapper,
-    FootballPolicyWrapper,
-    FootballScenarios, 
-)
+# from auturi.benchmarks.tasks.football_wrap import (
+#     FootballEnvWrapper,
+#     FootballPolicyWrapper,
+#     FootballScenarios, 
+# )
 from auturi.benchmarks.tasks.sb3_wrap import SB3EnvWrapper, SB3PolicyWrapper
 from auturi.executor import create_executor
 from auturi.tuner import ActorConfig, ParallelizationConfig, create_tuner_with_config
 from auturi.tuner.specific_parallelism import SpecificParallelismComparator
 
+from auturi.common.chrome_profiler import merge_file
 
 def create_envs(cls, task_id, rank, dummy=None):
     return cls(task_id, rank)
@@ -22,14 +24,14 @@ def make_naive_tuner(args, _):
 
     subproc_config = ActorConfig(
         num_envs=args.num_envs // num_loop,
-        num_policy=8,
-        num_parallel=args.num_envs,
-        batch_size=args.num_envs // 8,
+        num_policy=1,
+        num_parallel=1,
+        batch_size=1,
         num_collect=args.num_collect // num_loop,
         policy_device="cuda:0",
     )
     tuner_config = ParallelizationConfig.create([subproc_config] * num_loop)
-    return create_tuner_with_config(args.num_envs, tuner_config)
+    return create_tuner_with_config(args.num_envs, args.num_iteration, tuner_config)
 
 
 def make_specfic_tuner(args, validator=None):
@@ -47,7 +49,7 @@ def make_specfic_tuner(args, validator=None):
 
 def prepare_task(env_name, num_envs):
     validator = None
-    if env_name in FootballScenarios:
+    if env_name in []:
         task_id = env_name
         env_cls, policy_cls = FootballEnvWrapper, FootballPolicyWrapper
         validator = lambda x: x[0].policy_device != "cpu"
@@ -72,9 +74,14 @@ def prepare_task(env_name, num_envs):
     return env_fns, policy_cls, policy_kwargs, validator
 
 
+def trace_out_name(args, config):
+    config = config[0]
+    config_str = f"ep={config.num_parallel}pp={config.num_policy}bs={config.batch_size}"
+    return f"{args.env}_{args.num_envs}_{config_str}"
+
 def run(args):
     env_fns, policy_cls, policy_kwargs, validator = prepare_task(args.env, args.num_envs)
-    tuner = make_specfic_tuner(args, validator)
+    tuner = make_naive_tuner(args, validator)
     executor = create_executor(env_fns, policy_cls, policy_kwargs, tuner, "shm")
 
     try:
@@ -85,6 +92,9 @@ def run(args):
         print("search finish....")
         print(tuner.tuning_results)
 
+    if args.trace:
+        merge_file(trace_out_name(args, tuner.config))
+        
 
 if __name__ == "__main__":
     import sys
@@ -94,7 +104,7 @@ if __name__ == "__main__":
     parser.add_argument("--env", type=str)
 
     parser.add_argument(
-        "--num-iteration", type=int, default=3, help="number of trials for each config."
+        "--num-iteration", type=int, default=2, help="number of trials for each config."
     )
 
     parser.add_argument(
@@ -114,6 +124,7 @@ if __name__ == "__main__":
     )
 
     parser.add_argument("--tuner-mode", help="Tuner Mode", type=str, default="dummy", choices=["L", "E+P"])
+    parser.add_argument("--trace", action="store_true", help="skip backprop stage.")
 
 
     args = parser.parse_args()
@@ -124,4 +135,7 @@ if __name__ == "__main__":
         with open(args.tuner_log_path, "a") as f:
             f.write(str(args) + "\n")
     
+    if args.trace:
+        os.environ["AUTURI_TRACE"] = "1"
+
     run(args)

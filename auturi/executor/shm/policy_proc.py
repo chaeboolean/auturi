@@ -96,7 +96,8 @@ class SHMPolicyProc(SHMProcLoopMixin):
 
             # read observations from assigned env ids
             obs = self.get_visible_buffer(self.obs_buffer)[assigned_envs]
-            actions, artifacts = self.policy.compute_actions(obs, n_steps=1)
+            with self._trace_wrapper.em.timespan("action-gen"):
+                actions, artifacts = self.policy.compute_actions(obs, n_steps=1)
 
             # Write actions and the artifacts
             self.get_visible_buffer(self.action_buffer)[assigned_envs] = actions

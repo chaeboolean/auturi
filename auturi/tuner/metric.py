@@ -49,7 +49,7 @@ class MetricRecorder:
 
         records_ = self._get_record(self.records, config)
         if len(records_) < self.num_iterate:
-            raise AuturiNotEnoughSampleError("Not enough samples to make decision.")
+            raise AuturiNotEnoughSampleError(f"Not enough samples to make decision.({len(records_)}/{self.num_iterate})")
 
         total_num_traj = sum([_metric.num_traj for _metric in records_])
         total_time = sum([_metric.elapsed for _metric in records_])

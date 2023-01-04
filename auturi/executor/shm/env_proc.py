@@ -6,7 +6,7 @@ import auturi.executor.typing as types
 from auturi.executor.environment import AuturiSerialEnv
 from auturi.executor.shm.constant import EnvCommand, EnvStateEnum
 from auturi.executor.shm.mp_mixin import SHMProcLoopMixin
-from auturi.executor.shm.util import set_rollout_buffer_from_attr, set_shm_from_attr
+from auturi.executor.shm.util import set_rollout_buffer_from_attr, set_shm_from_attr, WaitingQueue
 
 
 class SHMEnvProc(SHMProcLoopMixin):
@@ -93,10 +93,10 @@ class SHMEnvProc(SHMProcLoopMixin):
         if is_first:
             assert np.all(self._get_env_state() == EnvStateEnum.STOPPED)
 
-            self._logger.debug("Entered the loop.")
-            obs = self.env.reset()
-            self.insert_obs_buffer(obs)
-            self._set_env_state(EnvStateEnum.STEP_DONE)
+            with self._trace_wrapper.em.timespan(f"reset"):
+                obs = self.env.reset()
+                self.insert_obs_buffer(obs)
+                self._set_env_state(EnvStateEnum.STEP_DONE)
             self._reset_curr_env_id()
             return
 
@@ -106,11 +106,10 @@ class SHMEnvProc(SHMProcLoopMixin):
             action, artifacts_list = self.get_actions(curr_id)
             self.curr_env_idx = self.env.start_idx
 
-            obs = self.env[curr_id].step(action, artifacts_list)
-            self._logger.debug(f"env_{curr_id}.step({action.flat[0]}) => {obs.flat[0]}")
-
-            self.insert_obs_buffer(obs, curr_id)
-            self._set_env_state(EnvStateEnum.STEP_DONE, curr_id)
+            with self._trace_wrapper.em.timespan(f"step_{curr_id}"):
+                obs = self.env[curr_id].step(action, artifacts_list)
+                self.insert_obs_buffer(obs, curr_id)
+                self._set_env_state(EnvStateEnum.STEP_DONE, curr_id)
             self._update_curr_env_id()
 
     def insert_obs_buffer(self, obs, curr_id=None) -> None:
