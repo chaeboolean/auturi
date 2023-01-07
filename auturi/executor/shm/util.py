@@ -4,6 +4,7 @@ from typing import Any, Callable, Dict, Tuple
 
 import gym
 import numpy as np
+import time
 
 from auturi.executor.environment import AuturiEnv
 from auturi.executor.gym_utils import get_action_sample
@@ -97,12 +98,19 @@ def set_rollout_buffer_from_attr(attr_dict):
 class WaitingQueue:
     """Imitate circular queue, but minimizing redundant numpy copy or traverse array."""
 
-    def __init__(self, num_envs):
+    def __init__(self, num_envs, record=False):
         self.limit = 2 * num_envs
         self.q = np.array([0 for _ in range(self.limit)], dtype=np.int64)
         self.cnt = 0
         self.head = 0
         self.tail = 0
+
+    @property
+    def qsize(self):
+        return self.cnt
+
+    def clear(self):
+        self.pop("all")
 
     def insert(self, requests):
         rsz = requests.size

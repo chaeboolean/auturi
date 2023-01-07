@@ -12,7 +12,6 @@ from auturi.executor.shm.util import WaitingQueue, wait
 
 MAX_ENV_NUM = 64
 
-
 class SHMParallelEnv(AuturiVectorEnv, SHMVectorLoopMixin):
     """SHMParallelVectorEnv
 
@@ -71,7 +70,7 @@ class SHMParallelEnv(AuturiVectorEnv, SHMVectorLoopMixin):
     # Internally call reset.
     def start_loop(self) -> None:
         self.env_counter.fill(0)
-        self.queue.pop("all")
+        self.queue.clear()
         assert np.all(self._get_env_state() == EnvStateEnum.STOPPED)
         SHMVectorLoopMixin.start_loop(self)
 

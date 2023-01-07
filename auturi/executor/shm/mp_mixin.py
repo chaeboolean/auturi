@@ -16,7 +16,7 @@ from auturi.executor.shm.constant import SHMCommand
 from auturi.executor.shm.util import _create_buffer_from_sample, set_shm_from_attr, wait
 from auturi.executor.vector_utils import VectorMixin
 from auturi.logger import get_logger
-from auturi.common.chrome_profiler import ProfilerWrapper
+from auturi.common.chrome_profiler import create_tracer
 
 BUFFER_COMMAND_IDX = 0
 BUFFER_DATA_OFFSET = 1
@@ -225,11 +225,16 @@ class SHMProcLoopMixin(SHMProcMixin, metaclass=ABCMeta):
 
     def initialize(self):
         super().initialize()
-        self._trace_wrapper = ProfilerWrapper(self.proc_name, self._to_trace)
+        self._trace_wrapper = create_tracer(self.proc_name, self._to_trace)
+
+    def _term_handler(self, cmd: int, data_list: List[int]):
+        self._trace_wrapper.dump_stats()
+        self.reply(cmd)
 
 
     def _loop_handler(self, cmd: int, data_list: List[int]):
         """Execute this function from when INIT_LOOP is set until STOP_LOOP is set."""
+        self._trace_wrapper.clear()
         self._step_loop_once(is_first=True)
         while True:
             cmd, _ = self._get_command()
@@ -253,7 +258,6 @@ class SHMProcLoopMixin(SHMProcMixin, metaclass=ABCMeta):
 
     def _stop_loop_handler(self) -> None:
         """Handler function called when SHMCommand.STOP_LOOP is set."""
-        self._trace_wrapper.dump_stats()
         self.reply(cmd=SHMCommand.STOP_LOOP)
 
     @abstractmethod
