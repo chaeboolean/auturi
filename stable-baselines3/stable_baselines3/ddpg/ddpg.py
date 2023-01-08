@@ -45,7 +45,9 @@ class DDPG(TD3):
         at a cost of more complexity.
         See https://github.com/DLR-RM/stable-baselines3/issues/37#issuecomment-637501195
     :param create_eval_env: Whether to create a second environment that will be
-        used for evaluating the agent periodically. (Only available when passing string for the environment)
+        used for evaluating the agent periodically (Only available when passing string for the environment).
+        Caution, this parameter is deprecated and will be removed in the future.
+        Please use `EvalCallback` or a custom Callback instead.
     :param policy_kwargs: additional arguments to be passed to the policy on creation
     :param verbose: Verbosity level: 0 for no output, 1 for info messages (such as device or wrappers used), 2 for
         debug messages
@@ -127,6 +129,7 @@ class DDPG(TD3):
         tb_log_name: str = "DDPG",
         eval_log_path: Optional[str] = None,
         reset_num_timesteps: bool = True,
+        progress_bar: bool = False,
     ) -> DDPGSelf:
 
         return super().learn(
@@ -139,4 +142,5 @@ class DDPG(TD3):
             tb_log_name=tb_log_name,
             eval_log_path=eval_log_path,
             reset_num_timesteps=reset_num_timesteps,
+            progress_bar=progress_bar,
         )

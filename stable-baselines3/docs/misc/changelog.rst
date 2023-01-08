@@ -3,6 +3,41 @@
 Changelog
 ==========
 
+Release 1.6.2 (2022-10-10)
+--------------------------
+
+**Progress bar in the learn() method, RL Zoo3 is now a package**
+
+Breaking Changes:
+^^^^^^^^^^^^^^^^^
+
+New Features:
+^^^^^^^^^^^^^
+- Added ``progress_bar`` argument in the ``learn()`` method, displayed using TQDM and rich packages
+- Added progress bar callback
+- The `RL Zoo <https://github.com/DLR-RM/rl-baselines3-zoo>`_ can now be installed as a package (``pip install rl_zoo3``)
+
+SB3-Contrib
+^^^^^^^^^^^
+
+Bug Fixes:
+^^^^^^^^^^
+- ``self.num_timesteps`` was initialized properly only after the first call to ``on_step()`` for callbacks
+- Set importlib-metadata version to ``~=4.13`` to be compatible with ``gym=0.21``
+
+Deprecations:
+^^^^^^^^^^^^^
+- Added deprecation warning if parameters ``eval_env``, ``eval_freq`` or ``create_eval_env`` are used (see #925) (@tobirohrer)
+
+Others:
+^^^^^^^
+- Fixed type hint of the ``env_id`` parameter in ``make_vec_env`` and ``make_atari_env`` (@AlexPasqua)
+
+Documentation:
+^^^^^^^^^^^^^^
+- Extended docstring of the ``wrapper_class`` parameter in ``make_vec_env`` (@AlexPasqua)
+
+
 Release 1.6.1 (2022-09-29)
 ---------------------------
 
@@ -36,6 +71,7 @@ Bug Fixes:
 - Removed ``forward()`` abstract method declaration from ``common.policies.BaseModel`` (already defined in ``torch.nn.Module``) to fix type errors in subclasses (@Rocamonde)
 - Fixed the return type of ``.load()`` and ``.learn()`` methods in ``BaseAlgorithm`` so that they now use ``TypeVar`` (@Rocamonde)
 - Fixed an issue where keys with different tags but the same key raised an error in ``common.logger.HumanOutputFormat`` (@Rocamonde and @AdamGleave)
+- Set importlib-metadata version to `~=4.13`
 
 Deprecations:
 ^^^^^^^^^^^^^
@@ -55,8 +91,9 @@ Documentation:
 - Fixed typo in install doc(@jlp-ue)
 - Clarified and standardized verbosity documentation
 - Added link to a GitHub issue in the custom policy documentation (@AlexPasqua)
+- Update doc on exporting models (fixes and added torch jit)
 - Fixed typos (@Akhilez)
-
+- Standardized the use of ``"`` for string representation in documentation
 
 Release 1.6.0 (2022-07-11)
 ---------------------------
@@ -1044,4 +1081,4 @@ And all the contributors:
 @simoninithomas @armandpl @manuel-delverme @Gautam-J @gianlucadecola @buoyancy99 @caburu @xy9485
 @Gregwar @ycheng517 @quantitative-technologies @bcollazo @git-thor @TibiGG @cool-RR @MWeltevrede
 @Melanol @qgallouedec @francescoluciano @jlp-ue @burakdmb @timothe-chaumont @honglu2875
-@anand-bala @hughperkins @sidney-tio @AlexPasqua @dominicgkerr @Akhilez @Rocamonde
+@anand-bala @hughperkins @sidney-tio @AlexPasqua @dominicgkerr @Akhilez @Rocamonde @tobirohrer
