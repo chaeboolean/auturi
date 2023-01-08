@@ -93,7 +93,7 @@ class SHMEnvProc(SHMProcLoopMixin):
         if is_first:
             assert np.all(self._get_env_state() == EnvStateEnum.STOPPED)
 
-            with self._trace_wrapper.em.timespan(f"reset"):
+            with self._trace_wrapper.timespan(f"reset"):
                 obs = self.env.reset()
                 self.insert_obs_buffer(obs)
                 self._set_env_state(EnvStateEnum.STEP_DONE)
@@ -106,7 +106,7 @@ class SHMEnvProc(SHMProcLoopMixin):
             action, artifacts_list = self.get_actions(curr_id)
             self.curr_env_idx = self.env.start_idx
 
-            with self._trace_wrapper.em.timespan(f"step_{curr_id}"):
+            with self._trace_wrapper.timespan(f"step_{curr_id}"):
                 obs = self.env[curr_id].step(action, artifacts_list)
                 self.insert_obs_buffer(obs, curr_id)
                 self._set_env_state(EnvStateEnum.STEP_DONE, curr_id)

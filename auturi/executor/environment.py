@@ -49,6 +49,10 @@ class AuturiEnv(metaclass=ABCMeta):
         """Aggregates rollout results from remote environments."""
         raise NotImplementedError
 
+    def sample_action(self):
+        return get_action_sample(self.action_space, 1)
+        
+
     def setup_dummy_env(self, dummy_env) -> None:
         """Set basic attributes from dummy_env."""
         self.observation_space = dummy_env.observation_space
@@ -60,7 +64,7 @@ class AuturiEnv(metaclass=ABCMeta):
         
         reset_obs = self.reset()
         #Aprint(f"reset_obs => {reset_obs.shape}")
-        action_sample = get_action_sample(action_space, 1)
+        action_sample = self.sample_action()
         #print(f"action_sample => {action_sample.shape}")
 
         obs_sample = self.step(action_sample, [action_sample])

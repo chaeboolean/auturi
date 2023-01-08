@@ -31,8 +31,14 @@ class AuturiPolicy(metaclass=ABCMeta):
     def terminate(self) -> None:
         raise NotImplementedError
 
+    def sample_observation(self, bs=1) -> np.ndarray:
+        return np.stack([self.observation_space.sample()] * bs)
+
     def _validate(self, observation_space, action_space):
-        obs_sample = np.stack([observation_space.sample()] * 3)
+        self.observation_space = observation_space
+        self.action_space = action_space
+
+        obs_sample = self.sample_observation(bs=3)
         action_sample, _ = self.compute_actions(obs_sample, 0)
 
         assert action_sample.shape[0] == 3

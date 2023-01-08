@@ -23,10 +23,10 @@ def make_naive_tuner(args, _):
     num_loop = 1
 
     subproc_config = ActorConfig(
-        num_envs=args.num_envs // num_loop,
-        num_policy=1,
-        num_parallel=1,
-        batch_size=1,
+        num_envs=args.num_envs,
+        num_parallel=1, # ep 
+        num_policy=2, # pp
+        batch_size=2, #bs
         num_collect=args.num_collect // num_loop,
         policy_device="cuda:0",
     )
@@ -77,7 +77,7 @@ def prepare_task(env_name, num_envs):
 def trace_out_name(args, config):
     config = config[0]
     config_str = f"ep={config.num_parallel}pp={config.num_policy}bs={config.batch_size}"
-    return f"{args.env}_{args.num_envs}_{config_str}"
+    return f"{config_str}_{args.num_envs}_{args.env}"
 
 def run(args):
     env_fns, policy_cls, policy_kwargs, validator = prepare_task(args.env, args.num_envs)
@@ -93,7 +93,9 @@ def run(args):
         print(tuner.tuning_results)
 
     if args.trace:
-        merge_file(trace_out_name(args, tuner.config))
+        output_name = trace_out_name(args, tuner.config)
+        merge_file(output_name)
+        print(output_name)
         
 
 if __name__ == "__main__":
