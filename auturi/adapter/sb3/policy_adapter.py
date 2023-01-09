@@ -80,5 +80,5 @@ class SB3PolicyAdapter(AuturiPolicy):
         return actions, [artifacts]
 
     def terminate(self):
-        del self.policy
+        del self.policy_model
         th.cuda.empty_cache()

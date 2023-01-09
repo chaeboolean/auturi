@@ -1,14 +1,15 @@
 import time
 from contextlib import contextmanager
 from collections import defaultdict
+import os
 
-def make_profiler(init=True):
+def make_profiler():
     class EmptyProfiler:
         @contextmanager
         def timespan(self, name):
             yield
             
-        def write(self, filename):
+        def dumps(self, filename):
             pass
 
     class MyProfiler:
@@ -23,7 +24,10 @@ def make_profiler(init=True):
             
             self.ts_dict[name].append(etime - stime)
 
-        def write(self, filename):
-            pass
+        def dumps(self, filename):
+            with open(filename, "w") as f:
+                for k, v in self.ts_dict.items():
+                    f.write(f"{k}: {v}\n")
 
-    return MyProfiler() if init else EmptyProfiler()
+    enable_profile = os.getenv("AUTURI_TASK_PROFILE", True)
+    return MyProfiler() if enable_profile else EmptyProfiler()

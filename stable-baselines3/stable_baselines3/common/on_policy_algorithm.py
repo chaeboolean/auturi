@@ -15,7 +15,6 @@ from stable_baselines3.common.utils import obs_as_tensor, safe_mean
 from stable_baselines3.common.vec_env import VecEnv
 
 from auturi.common.recorder import make_profiler
-import os
 
 OnPolicyAlgorithmSelf = TypeVar("OnPolicyAlgorithmSelf", bound="OnPolicyAlgorithm")
 
@@ -112,9 +111,7 @@ class OnPolicyAlgorithm(BaseAlgorithm):
         if _init_setup_model:
             self._setup_model()
 
-
-        enable_profile = os.getenv("AUTURI_TASK_PROFILE", False)
-        self._auturi_recorder= make_profiler(enable_profile)
+        self._auturi_recorder= make_profiler()
 
     def _setup_model(self) -> None:
         self._setup_lr_schedule()
@@ -319,7 +316,8 @@ class OnPolicyAlgorithm(BaseAlgorithm):
                     self.train()
             
         callback.on_training_end()
-        #self._auturi_recorder.dumps(filename)
+        self._auturi_recorder.dumps("out+loop.txt")
+        self._auturi_executor.terminate()
 
         return self
 

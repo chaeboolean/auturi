@@ -6,7 +6,7 @@ import auturi.executor.typing as types
 from auturi.executor.environment import AuturiEnvHandler, AuturiLocalEnv
 from auturi.executor.policy import AuturiLocalPolicy, AuturiPolicyHandler
 from auturi.tuner import AuturiMetric, ParallelizationConfig
-
+from auturi.common.recorder import make_profiler
 
 class AuturiLoopHandler(metaclass=ABCMeta):
     def __init__(self, env_fns, policy_cls, policy_kwargs):
@@ -33,6 +33,7 @@ class AuturiSingleLoopHandler(AuturiLoopHandler, metaclass=ABCMeta):
     def __init__(self, loop_id, env_fns, policy_cls, policy_kwargs):
         super().__init__(env_fns, policy_cls, policy_kwargs)
         self.loop_id = loop_id
+        self._recorder = make_profiler()
 
     @abstractmethod
     def _create_env_handler(self) -> AuturiEnvHandler:
@@ -70,10 +71,12 @@ class AuturiSingleLoopHandler(AuturiLoopHandler, metaclass=ABCMeta):
 
         loop_finish_cond = self._num_iteration()
         while n_steps < loop_finish_cond:
-            obs_refs: types.ObservationRefs = self.env_handler.poll()
-            action_refs: types.ActionRefs = self.policy_handler.compute_actions(
-                obs_refs, n_steps
-            )
+            with self._recorder.timespan("simulator"):
+                obs_refs: types.ObservationRefs = self.env_handler.poll()
+            with self._recorder.timespan("inference"):
+                action_refs: types.ActionRefs = self.policy_handler.compute_actions(
+                    obs_refs, n_steps
+                )
             self.env_handler.send_actions(action_refs)
 
             n_steps += self.env_handler.batch_size  # len(obs_refs)
@@ -87,8 +90,10 @@ class AuturiSingleLoopHandler(AuturiLoopHandler, metaclass=ABCMeta):
         return rollouts, AuturiMetric(self.num_collect, end_time - start_time)
 
     def terminate(self):
+        print("CALL TERMINATE!")
         self.policy_handler.terminate()
         self.env_handler.terminate()
+        self._recorder.dumps("sim+inf.txt")
 
 
 class SimpleLoopHandler(AuturiSingleLoopHandler):
