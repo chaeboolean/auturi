@@ -26,13 +26,15 @@ def insert_as_buffer(rollout_buffer, agg_buffer, num_envs):
     total_length = bsize * num_envs
 
     # Change shape: (num_collect, *) --> (bsize, num_envs, *)
-    def _reshape(buffer_):
-        shape_ = (bsize, num_envs, *(buffer_.shape[1:]))
+    def _reshape(buffer_, shape=None):
+        shape_ = shape
+        if shape_ is None:
+            shape_ = (bsize, num_envs, *(buffer_.shape[1:]))
         return buffer_[:total_length].reshape(*shape_)
 
     # reshape to (k, self.n_envs, obs_size)
     np.copyto(dst=rollout_buffer.observations, src=_reshape(agg_buffer["obs"]))
-    np.copyto(dst=rollout_buffer.actions, src=_reshape(agg_buffer["action"]))
+    np.copyto(dst=rollout_buffer.actions, src=_reshape(agg_buffer["action"], shape=rollout_buffer.actions.shape))
     np.copyto(dst=rollout_buffer.rewards, src=_reshape(agg_buffer["reward"]))
     np.copyto(
         dst=rollout_buffer.values, src=_reshape(agg_buffer["action_artifacts"][:, 0])

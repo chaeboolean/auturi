@@ -25,7 +25,7 @@ from sb3_contrib.common.vec_env import AsyncEval
 from stable_baselines3 import HerReplayBuffer  # noqa: F401
 from stable_baselines3.common.base_class import BaseAlgorithm
 from stable_baselines3.common.callbacks import BaseCallback, CheckpointCallback, EvalCallback
-from stable_baselines3.common.env_util import make_vec_env
+from stable_baselines3.common.env_util import make_vec_env, make_atari_env
 from stable_baselines3.common.noise import NormalActionNoise, OrnsteinUhlenbeckActionNoise
 from stable_baselines3.common.preprocessing import is_image_space, is_image_space_channels_first
 from stable_baselines3.common.sb2_compat.rmsprop_tf_like import RMSpropTFLike  # noqa: F401
@@ -49,12 +49,13 @@ from rl_zoo3.callbacks import SaveVecNormalizeCallback, TQDMCallback, TrialEvalC
 from rl_zoo3.hyperparams_opt import HYPERPARAMS_SAMPLER
 from rl_zoo3.utils import ALGOS, get_callback_list, get_latest_run_id, get_wrapper_class, linear_schedule
 
+# Add football
+import auturi.benchmarks.tasks.football_kaggle as football
 
 class ExperimentManager:
     """
     Experiment manager: read the hyperparameters,
     preprocess them, create the environment and the RL model.
-
     Please take a look at `train.py` to have the details for each argument.
     """
 
@@ -141,6 +142,7 @@ class ExperimentManager:
         self.truncate_last_trajectory = truncate_last_trajectory
 
         self._is_atari = self.is_atari(env_id)
+        self._is_football = env_id in football.scenarios
         # Hyperparameter optimization config
         self.optimize_hyperparameters = optimize_hyperparameters
         self.storage = storage
@@ -173,24 +175,26 @@ class ExperimentManager:
         )
         self.params_path = f"{self.save_path}/{self.env_name}"
 
-    def setup_experiment(self) -> Optional[Tuple[BaseAlgorithm, Dict[str, Any]]]:
+    def setup_experiment(self, num_envs: Optional[int] = None, n_steps: Optional[int] = None) -> Optional[Tuple[BaseAlgorithm, Dict[str, Any]]]:
         """
         Read hyperparameters, pre-process them (create schedules, wrappers, callbacks, action noise objects)
         create the environment and possibly the model.
-
         :return: the initialized RL model
         """
         hyperparams, saved_hyperparams = self.read_hyperparameters()
         hyperparams, self.env_wrapper, self.callbacks, self.vec_env_wrapper = self._preprocess_hyperparams(hyperparams)
 
-        self.create_log_folder()
-        self.create_callbacks()
+        # self.create_log_folder()
+        # self.create_callbacks()
 
         # Create env to have access to action space for action noise
         n_envs = 1 if self.algo == "ars" or self.optimize_hyperparameters else self.n_envs
-        env = self.create_envs(n_envs, no_log=False)
-
+        
+        n_envs = num_envs if num_envs is not None else n_envs
+        env = self.create_envs(n_envs, no_log=True)
         self._hyperparams = self._preprocess_action_noise(hyperparams, saved_hyperparams, env)
+        if n_steps is not None:
+            self._hyperparams["n_steps"] = n_steps
 
         if self.continue_training:
             model = self._load_pretrained_agent(self._hyperparams, env)
@@ -208,7 +212,7 @@ class ExperimentManager:
                 **self._hyperparams,
             )
 
-        self._save_config(saved_hyperparams)
+        # self._save_config(saved_hyperparams)
         return model, saved_hyperparams
 
     def learn(self, model: BaseAlgorithm) -> None:
@@ -216,17 +220,17 @@ class ExperimentManager:
         :param model: an initialized RL model
         """
         kwargs = {}
-        if self.log_interval > -1:
-            kwargs = {"log_interval": self.log_interval}
+        # if self.log_interval > -1:
+        #     kwargs = {"log_interval": self.log_interval}
 
-        if len(self.callbacks) > 0:
-            kwargs["callback"] = self.callbacks
+        # if len(self.callbacks) > 0:
+        #     kwargs["callback"] = self.callbacks
 
-        # Special case for ARS
-        if self.algo == "ars" and self.n_envs > 1:
-            kwargs["async_eval"] = AsyncEval(
-                [lambda: self.create_envs(n_envs=1, no_log=True) for _ in range(self.n_envs)], model.policy
-            )
+        # # Special case for ARS
+        # if self.algo == "ars" and self.n_envs > 1:
+        #     kwargs["async_eval"] = AsyncEval(
+        #         [lambda: self.create_envs(n_envs=1, no_log=True) for _ in range(self.n_envs)], model.policy
+        #     )
 
         try:
             model.learn(self.n_timesteps, **kwargs)
@@ -244,7 +248,6 @@ class ExperimentManager:
         """
         Save trained model optionally with its replay buffer
         and ``VecNormalize`` statistics
-
         :param model:
         """
         print(f"Saving to {self.save_path}")
@@ -262,7 +265,6 @@ class ExperimentManager:
         """
         Save unprocessed hyperparameters, this can be use later
         to reproduce an experiment.
-
         :param saved_hyperparams:
         """
         # Save hyperparams
@@ -285,6 +287,9 @@ class ExperimentManager:
                 hyperparams = hyperparams_dict[self.env_name.gym_id]
             elif self._is_atari:
                 hyperparams = hyperparams_dict["atari"]
+                
+            elif self._is_football:
+                hyperparams = hyperparams_dict["football"]
             else:
                 raise ValueError(f"Hyperparameters not found for {self.algo}-{self.env_name.gym_id}")
 
@@ -294,9 +299,9 @@ class ExperimentManager:
         # Sort hyperparams that will be saved
         saved_hyperparams = OrderedDict([(key, hyperparams[key]) for key in sorted(hyperparams.keys())])
 
-        if self.verbose > 0:
-            print("Default hyperparameters for environment (ones being tuned will be overridden):")
-            pprint(saved_hyperparams)
+        # Always print used hyperparameters
+        print("Default hyperparameters for environment (ones being tuned will be overridden):")
+        pprint(saved_hyperparams)
 
         return hyperparams, saved_hyperparams
 
@@ -480,24 +485,34 @@ class ExperimentManager:
 
     @staticmethod
     def is_atari(env_id: str) -> bool:
-        entry_point = gym.envs.registry.env_specs[env_id].entry_point  # pytype: disable=module-attr
-        return "AtariEnv" in str(entry_point)
-
+        try:
+            entry_point = gym.envs.registry.env_specs[env_id].entry_point  # pytype: disable=module-attr
+            return "AtariEnv" in str(entry_point)
+        except KeyError as e:
+            return False
+    
     @staticmethod
     def is_bullet(env_id: str) -> bool:
-        entry_point = gym.envs.registry.env_specs[env_id].entry_point  # pytype: disable=module-attr
-        return "pybullet_envs" in str(entry_point)
+        try:
+            entry_point = gym.envs.registry.env_specs[env_id].entry_point  # pytype: disable=module-attr
+            return "pybullet_envs" in str(entry_point)
+        except KeyError as e:
+            return False
+
 
     @staticmethod
     def is_robotics_env(env_id: str) -> bool:
-        entry_point = gym.envs.registry.env_specs[env_id].entry_point  # pytype: disable=module-attr
-        return "gym.envs.robotics" in str(entry_point) or "panda_gym.envs" in str(entry_point)
+        try:
+            entry_point = gym.envs.registry.env_specs[env_id].entry_point  # pytype: disable=module-attr
+            return "gym.envs.robotics" in str(entry_point) or "panda_gym.envs" in str(entry_point)
+        except KeyError as e:
+            return False
+
 
     def _maybe_normalize(self, env: VecEnv, eval_env: bool) -> VecEnv:
         """
         Wrap the env into a VecNormalize wrapper if needed
         and load saved statistics when present.
-
         :param env:
         :param eval_env:
         :return:
@@ -533,7 +548,6 @@ class ExperimentManager:
     def create_envs(self, n_envs: int, eval_env: bool = False, no_log: bool = False) -> VecEnv:
         """
         Create the environment and wrap it if necessary.
-
         :param n_envs:
         :param eval_env: Whether is it an environment used for evaluation or not
         :param no_log: Do not log training when doing hyperparameter optim
@@ -541,8 +555,9 @@ class ExperimentManager:
         :return: the vectorized environment, with appropriate wrappers
         """
         # Do not log eval env (issue with writing the same file)
-        log_dir = None if eval_env or no_log else self.save_path
-
+        # log_dir = None if eval_env or no_log else self.save_path
+        log_dir = None
+        
         monitor_kwargs = {}
         # Special case for GoalEnvs: log success rate too
         if (
@@ -552,19 +567,24 @@ class ExperimentManager:
         ):
             monitor_kwargs = dict(info_keywords=("is_success",))
 
-        # On most env, SubprocVecEnv does not help and is quite memory hungry
-        # therefore we use DummyVecEnv by default
-        env = make_vec_env(
-            env_id=self.env_name.gym_id,
-            n_envs=n_envs,
-            seed=self.seed,
-            env_kwargs=self.env_kwargs,
-            monitor_dir=log_dir,
-            wrapper_class=self.env_wrapper,
-            vec_env_cls=self.vec_env_class,
-            vec_env_kwargs=self.vec_env_kwargs,
-            monitor_kwargs=monitor_kwargs,
-        )
+        if self._is_football:
+            env_fns = [football.make_env(self.env_name, rank=i) for i in range(n_envs)]
+            env = self.vec_env_class(env_fns, **self.vec_env_kwargs)
+
+        else:
+            # On most env, SubprocVecEnv does not help and is quite memory hungry
+            # therefore we use DummyVecEnv by default
+            env = make_vec_env(
+                env_id=self.env_name.gym_id,
+                n_envs=n_envs,
+                seed=self.seed,
+                env_kwargs=self.env_kwargs,
+                monitor_dir=log_dir,
+                wrapper_class=self.env_wrapper,
+                vec_env_cls=self.vec_env_class,
+                vec_env_kwargs=self.vec_env_kwargs,
+                monitor_kwargs=monitor_kwargs,
+            )
 
         if self.vec_env_wrapper is not None:
             env = self.vec_env_wrapper(env)

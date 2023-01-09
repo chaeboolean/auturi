@@ -64,21 +64,21 @@ class SB3PolicyAdapter(AuturiPolicy):
 
         with th.no_grad():
             # Convert to pytorch tensor or to TensorDict
-            obs_tensor = obs_as_tensor(env_obs, self.device)
-            actions, values, log_probs = self.policy_model(obs_tensor)
+            obs = th.from_numpy(env_obs).to(self.device)
+            actions, values, log_probs = self.policy_model(obs)
 
         actions = _to_cpu_numpy(actions)
+        artifacts = np.stack(
+            [_to_cpu_numpy(values).flatten(), _to_cpu_numpy(log_probs)], 1
+        )
         if isinstance(self.action_space, gym.spaces.Discrete):
             actions = np.expand_dims(actions, -1)
-
-        artifacts = np.array(
-            [_to_cpu_numpy(values).flatten()[0], _to_cpu_numpy(log_probs)[0]]
-        )
-
+            
         end_time = time.perf_counter()
         self.time_ms.append(end_time - start_time)
 
         return actions, [artifacts]
 
     def terminate(self):
-        pass
+        del self.policy
+        th.cuda.empty_cache()

@@ -17,6 +17,8 @@ from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.sb2_compat.rmsprop_tf_like import RMSpropTFLike  # noqa: F401
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecEnv, VecFrameStack, VecNormalize
 
+from functools import partial
+
 # For custom activation fn
 from torch import nn as nn  # noqa: F401 pylint: disable=unused-import
 
@@ -113,9 +115,15 @@ def get_wrapper_class(hyperparams: Dict[str, Any], key: str = "env_wrapper") -> 
                 env = wrapper_class(env, **kwargs)
             return env
 
-        return wrap_env
+        return partial(_wrap_env, wrapper_classes, wrapper_kwargs)
     else:
         return None
+
+def _wrap_env(wrapper_classes, wrapper_kwargs, env: gym.Env)-> gym.Env:
+    """We define inner function to outer function, for multi-processing serializations."""
+    for wrapper_class, kwargs in zip(wrapper_classes, wrapper_kwargs):
+        env = wrapper_class(env, **kwargs)
+    return env
 
 
 def get_callback_list(hyperparams: Dict[str, Any]) -> List[BaseCallback]:
@@ -256,6 +264,9 @@ def create_test_env(
     return env
 
 
+def _linear_schedule_func(initial_value, progress_remaining: float) -> float:
+    return progress_remaining * initial_value
+
 def linear_schedule(initial_value: Union[float, str]) -> Callable[[float], float]:
     """
     Linear learning rate schedule.
@@ -274,7 +285,7 @@ def linear_schedule(initial_value: Union[float, str]) -> Callable[[float], float
         """
         return progress_remaining * initial_value
 
-    return func
+    return partial(_linear_schedule_func, initial_value)
 
 
 def get_trained_models(log_folder: str) -> Dict[str, Tuple[str, str]]:

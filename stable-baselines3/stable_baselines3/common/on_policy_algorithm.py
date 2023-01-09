@@ -14,6 +14,9 @@ from stable_baselines3.common.type_aliases import GymEnv, MaybeCallback, Schedul
 from stable_baselines3.common.utils import obs_as_tensor, safe_mean
 from stable_baselines3.common.vec_env import VecEnv
 
+from auturi.common.recorder import make_profiler
+import os
+
 OnPolicyAlgorithmSelf = TypeVar("OnPolicyAlgorithmSelf", bound="OnPolicyAlgorithm")
 
 
@@ -102,8 +105,16 @@ class OnPolicyAlgorithm(BaseAlgorithm):
         self.max_grad_norm = max_grad_norm
         self.rollout_buffer = None
 
+        self._auturi_iteration = -1
+        self._auturi_train_skip = False
+        self._collect_rollouts_fn = self._collect_rollouts_default
+
         if _init_setup_model:
             self._setup_model()
+
+
+        enable_profile = os.getenv("AUTURI_TASK_PROFILE", False)
+        self._auturi_recorder= make_profiler(enable_profile)
 
     def _setup_model(self) -> None:
         self._setup_lr_schedule()
@@ -161,6 +172,26 @@ class OnPolicyAlgorithm(BaseAlgorithm):
 
         callback.on_rollout_start()
 
+        ########################################################################
+        #                                                                      #
+        # Auturi actually alters this line...                                  #
+        #                                                                      #
+        ########################################################################
+        new_obs, dones = self._collect_rollouts_fn(env, callback,  rollout_buffer, n_rollout_steps)
+        
+        with th.no_grad():
+            # Compute value for the last timestep
+            values = self.policy.predict_values(obs_as_tensor(new_obs, self.device))
+
+        rollout_buffer.compute_returns_and_advantage(last_values=values, dones=dones)
+
+        callback.on_rollout_end()
+
+        return True
+
+    def _collect_rollouts_default(self, env, callback,  rollout_buffer, n_rollout_steps):
+        n_steps = 0
+
         while n_steps < n_rollout_steps:
             if self.use_sde and self.sde_sample_freq > 0 and n_steps % self.sde_sample_freq == 0:
                 # Sample a new noise matrix
@@ -183,11 +214,11 @@ class OnPolicyAlgorithm(BaseAlgorithm):
             self.num_timesteps += env.num_envs
 
             # Give access to local variables
-            callback.update_locals(locals())
-            if callback.on_step() is False:
-                return False
+            # callback.update_locals(locals())
+            # if callback.on_step() is False:
+            #     return False
 
-            self._update_info_buffer(infos)
+            # self._update_info_buffer(infos)
             n_steps += 1
 
             if isinstance(self.action_space, gym.spaces.Discrete):
@@ -211,15 +242,16 @@ class OnPolicyAlgorithm(BaseAlgorithm):
             self._last_obs = new_obs
             self._last_episode_starts = dones
 
-        with th.no_grad():
-            # Compute value for the last timestep
-            values = self.policy.predict_values(obs_as_tensor(new_obs, self.device))
+        # with th.no_grad():
+        #     # Compute value for the last timestep
+        #     values = self.policy.predict_values(obs_as_tensor(new_obs, self.device))
 
-        rollout_buffer.compute_returns_and_advantage(last_values=values, dones=dones)
+        # rollout_buffer.compute_returns_and_advantage(last_values=values, dones=dones)
 
-        callback.on_rollout_end()
+        # callback.on_rollout_end()
 
-        return True
+        # return True
+        return new_obs, dones
 
     def train(self) -> None:
         """
@@ -243,23 +275,25 @@ class OnPolicyAlgorithm(BaseAlgorithm):
     ) -> OnPolicyAlgorithmSelf:
         iteration = 0
 
+
         total_timesteps, callback = self._setup_learn(
-            total_timesteps,
-            eval_env,
-            callback,
-            eval_freq,
-            n_eval_episodes,
-            eval_log_path,
-            reset_num_timesteps,
-            tb_log_name,
-            progress_bar,
+           total_timesteps, eval_env, callback, eval_freq, n_eval_episodes, eval_log_path, reset_num_timesteps, tb_log_name
         )
 
         callback.on_training_start(locals(), globals())
+        
+        cond_ = lambda: iteration < self._auturi_iteration
+        if self._auturi_iteration < 0:
+            cond_ = lambda: self.num_timesteps < total_timesteps
+            
+        # while self.num_timesteps < total_timesteps:
+        # while iteration < self._auturi_iteration:
+        while cond_():
 
-        while self.num_timesteps < total_timesteps:
-
-            continue_training = self.collect_rollouts(self.env, callback, self.rollout_buffer, n_rollout_steps=self.n_steps)
+            print(f"Iteration ({iteration})...(auturi iteration={self._auturi_iteration})")
+    
+            with self._auturi_recorder.timespan("collection"):
+                continue_training = self.collect_rollouts(self.env, callback, self.rollout_buffer, n_rollout_steps=self.n_steps)
 
             if continue_training is False:
                 break
@@ -268,21 +302,24 @@ class OnPolicyAlgorithm(BaseAlgorithm):
             self._update_current_progress_remaining(self.num_timesteps, total_timesteps)
 
             # Display training infos
-            if log_interval is not None and iteration % log_interval == 0:
-                time_elapsed = max((time.time_ns() - self.start_time) / 1e9, sys.float_info.epsilon)
-                fps = int((self.num_timesteps - self._num_timesteps_at_start) / time_elapsed)
-                self.logger.record("time/iterations", iteration, exclude="tensorboard")
-                if len(self.ep_info_buffer) > 0 and len(self.ep_info_buffer[0]) > 0:
-                    self.logger.record("rollout/ep_rew_mean", safe_mean([ep_info["r"] for ep_info in self.ep_info_buffer]))
-                    self.logger.record("rollout/ep_len_mean", safe_mean([ep_info["l"] for ep_info in self.ep_info_buffer]))
-                self.logger.record("time/fps", fps)
-                self.logger.record("time/time_elapsed", int(time_elapsed), exclude="tensorboard")
-                self.logger.record("time/total_timesteps", self.num_timesteps, exclude="tensorboard")
-                self.logger.dump(step=self.num_timesteps)
-
-            self.train()
-
+            # if log_interval is not None and iteration % log_interval == 0:
+            #     time_elapsed = max((time.time_ns() - self.start_time) / 1e9, sys.float_info.epsilon)
+            #     fps = int((self.num_timesteps - self._num_timesteps_at_start) / time_elapsed)
+            #     self.logger.record("time/iterations", iteration, exclude="tensorboard")
+            #     if len(self.ep_info_buffer) > 0 and len(self.ep_info_buffer[0]) > 0:
+            #         self.logger.record("rollout/ep_rew_mean", safe_mean([ep_info["r"] for ep_info in self.ep_info_buffer]))
+            #         self.logger.record("rollout/ep_len_mean", safe_mean([ep_info["l"] for ep_info in self.ep_info_buffer]))
+            #     self.logger.record("time/fps", fps)
+            #     self.logger.record("time/time_elapsed", int(time_elapsed), exclude="tensorboard")
+            #     self.logger.record("time/total_timesteps", self.num_timesteps, exclude="tensorboard")
+            #     self.logger.dump(step=self.num_timesteps)
+            
+            with self._auturi_recorder.timespan("update"):
+                if not self._auturi_train_skip:
+                    self.train()
+            
         callback.on_training_end()
+        #self._auturi_recorder.dumps(filename)
 
         return self
 

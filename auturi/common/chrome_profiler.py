@@ -43,6 +43,10 @@ class EmptyTraceRecorder:
     def clear(self):
         pass
 
+    @contextmanager
+    def timespan(self, event_name, batch=None):
+        yield None
+
 
 class ChromeTraceRecorder:
     """This class records events from an event manager and generate trace which can be fed onto Chrome visualizer.
