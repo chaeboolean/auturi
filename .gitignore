@@ -10,7 +10,6 @@ __pycache__/
 *$py.claexss
 *.tar.gz
 *.tar
-*.txt
 
 # C extensions
 *.so
