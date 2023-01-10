@@ -78,42 +78,28 @@ class GreedyTuner(AuturiTuner):
             f.write(str(message) + "\n")
             
 
-    def _increase_degree(self, config, increase_policy: bool):
-        actor_config = config[0]
-        incr_deg = (1, 2) if increase_policy else (2, 1)
-        incr_str = "Policy" if increase_policy else "Env"
+    def _increase_knob(self, actor_config, knob):
         try:
-            next_config = ParallelizationConfig.create([ActorConfig(
-                num_envs=actor_config.num_envs,
-                num_parallel=actor_config.num_parallel * incr_deg[0], 
-                num_policy=actor_config.num_policy * incr_deg[1],
-                batch_size=1,
-                policy_device=actor_config.policy_device,
-                num_collect=actor_config.num_collect,
-            )])
+            if knob == "ep":
+                next_config = _increase_env(actor_config)
+            elif knob == "pp":
+                next_config = _increase_policy(actor_config)
+            elif knob == "bs":
+                next_config = _increase_bs(actor_config)
+            else:
+                raise NotImplementedError
             
             if self.use_gpu:
                 assert next_config.num_policy <= self.max_policy_num
             assert next_config[0].num_parallel + next_config[0].num_policy <= self.num_cores
-            self.write_log(f"Increase {incr_str} degree! => {(_config_to_tuple(next_config))}")
 
+            self.write_log(f"Increase {knob}! => {(_config_to_tuple(next_config))}")
             return next_config
     
         except AssertionError as e:
-            self.write_log(f"Increase {incr_str} FAIL.")
-
+            self.write_log(f"Increase {knob} FAIL.")
             return None
-
         
-
-    def _check_config(self, config: ParallelizationConfig):
-        if self.use_gpu and config.num_policy > self.max_policy_num:
-            return False
-
-        if config.num_parallel_envs + config.num_policy > self.num_cores:
-            return False
-        
-        return True
 
     def terminate_tuner(self):
         self.write_log(f"Search time = {self.stime}, tried {self.cnt} configs")
@@ -128,46 +114,42 @@ class GreedyTuner(AuturiTuner):
         if not self._init:
             self.write_log(f"Init!")
             self._init = True
+            return self._last_config
 
     
-        # Case 1. Batch size is maximum. Increaes degree.
-        elif actor_config.batch_size == actor_config.num_envs // actor_config.num_policy:
-            
-            # Find best batch size
-            degree_key = (actor_config.num_parallel, actor_config.num_policy) # (ep, pp)
-            sorted_bs = sorted(self.dict_bs[degree_key])[0] # tuple (time, bs, pol exec, env exec)
-            
-            self.write_log(f"Best batch size for ep={degree_key[0]},pp={degree_key[1]}: {sorted_bs[1]} ---> result = {sorted_bs[0]} sec")
-            
-            # Stop if previous value is best
-            if sorted_bs[0] > self._last_best[3]:
-                self.terminate_tuner()
-                raise StopIteration
-            else:
-                self._last_best = (degree_key[0], degree_key[1], sorted_bs[1], sorted_bs[0])
-            
-            # Pick which to increase degree
-            policy_ratio, env_ratio = sorted_bs[2], sorted_bs[3]
-            next_config = self._increase_degree(self._last_config, policy_ratio - env_ratio > 0.1)
-            if next_config is None:
-                self.terminate_tuner()
-                raise StopIteration
-            else:
-                self._last_config = next_config
+        degree_key = (actor_config.num_parallel, actor_config.num_policy) # (ep, pp)
+                
+        # Try to find batch size first
+        next_config = self._increase_knob(actor_config, "bs")
+        if next_config is not None:
+            self._last_config = next_config
+            return next_config
         
-        # Case 2. Search another batch size
+        # Find best batch size
+        sorted_bs = sorted(self.dict_bs[degree_key])[0] # tuple (time, bs, pol exec, env exec)
+        self.write_log(f"Best batch size for ep={degree_key[0]},pp={degree_key[1]}: {sorted_bs[1]} ---> result = {sorted_bs[0]} sec")
+        
+        # Stop if previous value is better than current one.
+        if sorted_bs[0] > self._last_best[3]:
+            self.terminate_tuner()
+            raise StopIteration
         else:
-            self._last_config = ParallelizationConfig.create([ActorConfig(
-                num_envs=actor_config.num_envs,
-                num_policy=actor_config.num_policy,
-                num_parallel=actor_config.num_parallel, 
-                batch_size=actor_config.batch_size * 2,
-                policy_device=actor_config.policy_device,
-                num_collect=actor_config.num_collect,
-            )])
-
+            self._last_best = (degree_key[0], degree_key[1], sorted_bs[1], sorted_bs[0])
+                    
+        # Pick which to increase degree
+        policy_ratio, env_ratio = sorted_bs[2], sorted_bs[3]
+        if policy_ratio - env_ratio > 0.1:
+            next_config = self._increase_knob(actor_config, "pp")
+        else: 
+            next_config = self._increase_knob(actor_config, "ep")
+            
+        if next_config is None:
+            self.terminate_tuner()
+            raise StopIteration
+        
+        self._last_config = next_config
         return self._last_config
-
+        
 
     def _update_tuner(self, config, res):
         
@@ -196,9 +178,41 @@ class GreedyTuner(AuturiTuner):
     def trace_out_name(self, config):
         ep, pp, bs = _config_to_tuple(config)
         config_str = f"({self.cnt})ep={ep}+pp={pp}+bs={bs}"
-        return f"{self.task_name}_env{self.min_num_env}", config_str
+        return f"{self.task_name}_env{self.min_num_env}(cuda_{self.use_gpu})", config_str
 
 
 def _config_to_tuple(config: ParallelizationConfig) -> Tuple[int]:
     actor_config = config[0]
     return actor_config.num_parallel, actor_config.num_policy, actor_config.batch_size
+
+
+
+def _increase_policy(actor_config):
+    return ParallelizationConfig.create([ActorConfig(
+        num_envs=actor_config.num_envs,
+        num_parallel=actor_config.num_parallel, 
+        num_policy=actor_config.num_policy + 1,
+        batch_size=1,
+        policy_device=actor_config.policy_device,
+        num_collect=actor_config.num_collect,
+    )])
+
+def _increase_env(actor_config):    
+    return ParallelizationConfig.create([ActorConfig(
+        num_envs=actor_config.num_envs,
+        num_parallel=actor_config.num_parallel * 2, 
+        num_policy=actor_config.num_policy,
+        batch_size=1,
+        policy_device=actor_config.policy_device,
+        num_collect=actor_config.num_collect,
+    )])
+
+def _increase_bs(actor_config):
+    return ParallelizationConfig.create([ActorConfig(
+        num_envs=actor_config.num_envs,
+        num_parallel=actor_config.num_parallel, 
+        num_policy=actor_config.num_policy,
+        batch_size=actor_config.batch_size + 1,
+        policy_device=actor_config.policy_device,
+        num_collect=actor_config.num_collect,
+    )])

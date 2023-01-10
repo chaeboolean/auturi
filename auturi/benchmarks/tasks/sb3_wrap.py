@@ -10,6 +10,9 @@ from stable_baselines3.common.vec_env import (
     VecFrameStack,
     VecTransposeImage,
 )
+import pybullet_envs
+from traci.exceptions import FatalTraCIError
+
 import auturi.benchmarks.tasks.finrl_wrap as finrl
 import auturi.benchmarks.tasks.flow_wrap as flow 
 import auturi.benchmarks.tasks.football_kaggle as football
@@ -25,8 +28,8 @@ def make_env(task_id: str, is_atari_: bool):
         env = VecFrameStack(env, 4)
         return VecTransposeImage(env)
 
-    elif task_id in football._scenarios:
-        return DummyVecEnv([football.make_env(task_id)])
+    elif task_id in football.scenarios:
+        return VecTransposeImage(DummyVecEnv([football.make_env(task_id)]))
 
     elif task_id in flow.scenarios:
         return DummyVecEnv([flow.make_env(task_id)])
@@ -55,7 +58,9 @@ class SB3EnvWrapper(AuturiEnv):
     def __init__(self, task_id: str, rank: int):
         self.rank = rank
         is_atari_ = is_atari(task_id)
-        self.env = make_env(task_id, is_atari_)
+        self.is_flow_ = task_id in flow.scenarios
+        self.env_fn = lambda: make_env(task_id, is_atari_)
+        self.env = self.env_fn()
 
         # self.env = gym.make("HalfCheetah-v3")
         self.setup_dummy_env(self.env)
@@ -72,7 +77,13 @@ class SB3EnvWrapper(AuturiEnv):
         if isinstance(self.action_space, gym.spaces.Discrete):
             action_ = action[0]
 
-        obs, reward, done, _ = self.env.step(action_)
+        clipped_actions = action
+        if isinstance(self.action_space, gym.spaces.Box):
+            clipped_actions = np.clip(
+                action_, self.action_space.low, self.action_space.high
+            )
+        obs, reward, done, _ = self.env.step(clipped_actions)  # all list
+
 
         self.storage["obs"].append(obs)
         self.storage["action"].append(action)
@@ -84,7 +95,13 @@ class SB3EnvWrapper(AuturiEnv):
 
     def reset(self):
         self.storage.clear()
-        return self.env.reset()
+        try:
+            return self.env.reset()
+        except Exception as e:
+            self.env.close()
+            print("CIError. Close and Restart.")
+            self.env = self.env_fn()
+            return self.env.reset()
 
     def seed(self, seed):
         self.env.seed(seed + self.rank)
@@ -100,11 +117,17 @@ class SB3PolicyWrapper(AuturiPolicy):
     def __init__(self, task_id: str, idx: int):
         self.device = "cpu"
         self.is_atari_ = is_atari(task_id)
+        self.is_football_ = task_id in football.scenarios
         dummy_env = make_env(task_id, self.is_atari_)
-        policy_cls = ActorCriticCnnPolicy if self.is_atari_ else ActorCriticPolicy
-        self.policy = policy_cls(
-            dummy_env.observation_space, dummy_env.action_space, lambda _: 0.001
+        policy_cls = ActorCriticCnnPolicy if (self.is_atari_ or self.is_football_) else ActorCriticPolicy
+        policy_kwargs = dict(
+            observation_space=dummy_env.observation_space, 
+            action_space=dummy_env.action_space,
+            lr_schedule=lambda _: 0.001
         )
+        if self.is_football_:
+            policy_kwargs.update(dict(features_extractor_class=football.FootballCNN, features_extractor_kwargs=dict(features_dim=256)))
+        self.policy = policy_cls(**policy_kwargs)
         self.policy.set_training_mode(False)
         self._validate(dummy_env.observation_space, dummy_env.action_space)
 
@@ -121,7 +144,7 @@ class SB3PolicyWrapper(AuturiPolicy):
         artifacts = np.stack(
             [_to_cpu_numpy(values).flatten(), _to_cpu_numpy(log_probs)], 1
         )
-        if self.is_atari_:
+        if self.is_atari_ or self.is_football_:
             actions = np.expand_dims(actions, -1)
         return actions, [artifacts]
 

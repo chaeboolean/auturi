@@ -28,7 +28,7 @@ def create_tuner(args):
         num_iterate=args.num_iteration,
         task_name=args.env,
         num_core=args.num_core, 
-        log_path=f"/workspace/auturi/tuner-log/{args.env}.log",
+        log_path=f"/workspace/auturi/tuner-log/{args.env}_{args.cuda}.log",
     ) 
 
 
@@ -68,7 +68,8 @@ def run(args):
     try:
         while True:
             executor.run(None)
-    except StopIteration:
+    except Exception as e:
+        tuner.terminate_tuner()
         executor.terminate()
         print("search finish....")
         print(tuner.dict_bs)
@@ -86,7 +87,7 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
-        "--num-envs", type=int, default=4, help="number of environments."
+        "--num-envs", type=int, default=16, help="number of environments."
     )
 
     parser.add_argument(
@@ -94,7 +95,7 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
-        "--num-collect", type=int, default=40, help="number of trajectories to collect."
+        "--num-collect", type=int, default=3200, help="number of trajectories to collect."
     )
 
     parser.add_argument(

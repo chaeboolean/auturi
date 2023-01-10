@@ -2,6 +2,7 @@ import gym
 import numpy as np
 
 from auturi.executor.environment import AuturiEnv
+from traci.exceptions import FatalTraCIError
 
 
 class SB3LocalRolloutBuffer:
@@ -60,6 +61,7 @@ class SB3LocalRolloutBuffer:
 
 class SB3EnvAdapter(AuturiEnv):
     def __init__(self, env_fn):
+        self.env_fn = env_fn
         self.env = env_fn()
         self.setup_dummy_env(self.env)
         self.artifacts_samples = [np.array([[1.1, 1.4]])]
@@ -71,7 +73,14 @@ class SB3EnvAdapter(AuturiEnv):
 
     # Should explicitly call reset() before data collection.
     def reset(self):
-        self._last_obs = self.env.reset()
+        try:
+            self._last_obs = self.env.reset()
+            
+        except FatalTraCIError as e:
+            self.env.close()
+            print("CIError. Close and Restart.")
+            self.env = self.env_fn()
+            
         self._last_episode_starts = np.array([True])
 
         return self._last_obs
