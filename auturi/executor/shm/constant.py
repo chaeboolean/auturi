@@ -36,6 +36,8 @@ class EnvStateEnum:
 
     STOPPED = 0
     STEP_DONE = 22  # Newly arrived requests
-    QUEUED = 23  # Inside Server side waiting queue
+    WAITING_POLICY = 23  # Inside Server side waiting queue
     POLICY_DONE = 24  # Processed requests
+    WAITING_ENV = 25  # Inside Server side waiting queue
+
     POLICY_OFFSET = 30  # offset => ASSIGNED

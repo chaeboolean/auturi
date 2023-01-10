@@ -39,6 +39,7 @@ class SHMEnvProc(SHMProcLoopMixin):
         )
 
         self.rollout_buffers = set_rollout_buffer_from_attr(self.rollout_buffer_attr)
+        self._queue = None
 
         SHMProcLoopMixin.initialize(self)
 
@@ -63,6 +64,7 @@ class SHMEnvProc(SHMProcLoopMixin):
 
     def set_visible_env_handler(self, cmd: int, data_list: List[int]) -> None:
         self.env.set_working_env(data_list[0], data_list[1], self.env_fns)
+        self._queue = WaitingQueue(data_list[1] - data_list[0])
         self.reply(cmd)
 
     def aggregate_handler(self, cmd: int, data_list: List[int]) -> None:
@@ -77,40 +79,33 @@ class SHMEnvProc(SHMProcLoopMixin):
 
         self.reply(cmd)
 
-    def _reset_curr_env_id(self):
-        self._curr_env_id = self.env.start_idx
-
-    def _update_curr_env_id(self):
-        self._curr_env_id += 1
-        if self._curr_env_id >= self.env.end_idx:
-            self._reset_curr_env_id()
-
-    def _get_curr_env_id(self):
-        return self._curr_env_id
 
     def _step_loop_once(self, is_first: bool) -> None:
         # call env.reset first
         if is_first:
             assert np.all(self._get_env_state() == EnvStateEnum.STOPPED)
+            self._queue.clear()
 
             with self._trace_wrapper.timespan(f"reset"):
                 obs = self.env.reset()
                 self.insert_obs_buffer(obs)
                 self._set_env_state(EnvStateEnum.STEP_DONE)
-            self._reset_curr_env_id()
             return
 
         # wait until POLICY_DONE, and then call env.step again
-        curr_id = self._get_curr_env_id()
-        if np.all(self._get_env_state(curr_id) == EnvStateEnum.POLICY_DONE):
+        new_done_ids = np.where(self._get_env_state() == EnvStateEnum.POLICY_DONE)[0] + self.env.start_idx
+        self._queue.insert(new_done_ids)
+        self.env_buffer[new_done_ids] = EnvStateEnum.WAITING_ENV
+
+        if self._queue.qsize > 0:
+            curr_id = self._queue.pop(num=1)[0]
+            assert self._get_env_state(curr_id) == EnvStateEnum.WAITING_ENV
             action, artifacts_list = self.get_actions(curr_id)
-            self.curr_env_idx = self.env.start_idx
 
             with self._trace_wrapper.timespan(f"step_{curr_id}"):
                 obs = self.env[curr_id].step(action, artifacts_list)
                 self.insert_obs_buffer(obs, curr_id)
                 self._set_env_state(EnvStateEnum.STEP_DONE, curr_id)
-            self._update_curr_env_id()
 
     def insert_obs_buffer(self, obs, curr_id=None) -> None:
         slice_ = (
@@ -150,7 +145,7 @@ class SHMEnvProc(SHMProcLoopMixin):
         return np.all(
             np.ma.mask_or(
                 (self._get_env_state() == EnvStateEnum.STEP_DONE),
-                (self._get_env_state() == EnvStateEnum.QUEUED),
+                (self._get_env_state() == EnvStateEnum.WAITING_POLICY),
             )
         )
 

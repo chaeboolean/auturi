@@ -89,7 +89,7 @@ class SHMParallelEnv(AuturiVectorEnv, SHMVectorLoopMixin):
             new_done_ids = np.where(self._get_env_state() == EnvStateEnum.STEP_DONE)[0]
 
             self.queue.insert(new_done_ids)
-            self._set_env_state(EnvStateEnum.QUEUED, mask=new_done_ids)
+            self._set_env_state(EnvStateEnum.WAITING_POLICY, mask=new_done_ids)
 
             if self.queue.cnt >= self.batch_size:
                 ret = self.queue.pop(num=self.batch_size)

@@ -98,7 +98,7 @@ class SHMVectorPolicy(AuturiVectorPolicy, SHMVectorLoopMixin):
         self, env_ids: types.ObservationRefs, n_steps: int
     ) -> types.ActionRefs:
         while True:
-            assert np.all(self._get_env_state()[env_ids] == EnvStateEnum.QUEUED)
+            assert np.all(self._get_env_state()[env_ids] == EnvStateEnum.WAITING_POLICY), f"Got: envs={env_ids}, {self._get_env_state()[env_ids]}"
 
             # poll until there is at least one idle policy process
             ready_policies = np.where(self._get_state() == PolicyStateEnum.READY)[0]

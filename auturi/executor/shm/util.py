@@ -114,6 +114,8 @@ class WaitingQueue:
 
     def insert(self, requests):
         rsz = requests.size
+        if rsz == 0: 
+            return
         first_ = rsz if self.tail + rsz <= self.limit else self.limit - self.tail
         second_ = rsz - first_
 
