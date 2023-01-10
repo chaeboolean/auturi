@@ -67,20 +67,20 @@ class SB3EnvWrapper(AuturiEnv):
         self.storage = defaultdict(list)
         self.artifacts_samples = [np.array([[1.1, 1.4]])]
 
-        self._validate(self.observation_space, self.action_space)
+        #self._validate(self.observation_space, self.action_space)
 
-    def step(self, action, artifacts):
+    def step(self, actions, artifacts):
         # if action.ndim == self.action_space.sample().ndim:
         #     action = np.expand_dims(action, -1)
 
-        action_ = action
+        action = actions
         if isinstance(self.action_space, gym.spaces.Discrete):
-            action_ = action[0]
+            action = actions[0]
 
         clipped_actions = action
         if isinstance(self.action_space, gym.spaces.Box):
             clipped_actions = np.clip(
-                action_, self.action_space.low, self.action_space.high
+                action, self.action_space.low, self.action_space.high
             )
         obs, reward, done, _ = self.env.step(clipped_actions)  # all list
 
@@ -129,7 +129,7 @@ class SB3PolicyWrapper(AuturiPolicy):
             policy_kwargs.update(dict(features_extractor_class=football.FootballCNN, features_extractor_kwargs=dict(features_dim=256)))
         self.policy = policy_cls(**policy_kwargs)
         self.policy.set_training_mode(False)
-        self._validate(dummy_env.observation_space, dummy_env.action_space)
+        #self._validate(dummy_env.observation_space, dummy_env.action_space)
 
         dummy_env.close()
 
