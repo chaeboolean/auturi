@@ -8,7 +8,7 @@ import os
 #     FootballPolicyWrapper,
 #     FootballScenarios, 
 # )
-from auturi.benchmarks.tasks.sb3_wrap import SB3EnvWrapper, SB3PolicyWrapper
+from auturi.benchmarks.tasks.sb3_wrap import SB3EnvWrapper, SB3PolicyWrapper, SB3LSTMPolicyWrapper, is_atari
 from auturi.executor import create_executor
 from auturi.tuner import ActorConfig, ParallelizationConfig, create_tuner_with_config
 from auturi.tuner.specific_parallelism import SpecificParallelismComparator
@@ -24,14 +24,14 @@ def make_naive_tuner(args, _):
 
     subproc_config = ActorConfig(
         num_envs=args.num_envs,
-        num_parallel=1, # ep 
-        num_policy=2, # pp
-        batch_size=2, #bs
+        num_parallel=args.num_envs, # ep 
+        num_policy=1, # pp
+        batch_size=args.num_envs, #bs
         num_collect=args.num_collect // num_loop,
         policy_device="cuda:0",
     )
     tuner_config = ParallelizationConfig.create([subproc_config] * num_loop)
-    return create_tuner_with_config(args.num_envs, args.num_iteration, tuner_config)
+    return create_tuner_with_config(args.num_envs, args.num_iteration, tuner_config, "", "no")
 
 
 def make_specfic_tuner(args, validator=None):
@@ -49,21 +49,20 @@ def make_specfic_tuner(args, validator=None):
 
 def prepare_task(env_name, num_envs):
     validator = None
-    if env_name in []:
-        task_id = env_name
-        env_cls, policy_cls = FootballEnvWrapper, FootballPolicyWrapper
-        validator = lambda x: x[0].policy_device != "cpu"
-
-    elif env_name == "circuit":
+    if env_name == "circuit":
         task_id = None
         env_cls, policy_cls = CircuitEnvWrapper, CircuitPolicyWrapper
         validator = lambda x: x[0].policy_device != "cpu"
 
-    else:
-        atari_name = "PongNoFrameskip-v4"
-        task_id = atari_name if env_name == "atari" else env_name
-        env_cls, policy_cls = SB3EnvWrapper, SB3PolicyWrapper
+    elif is_atari(env_name):
+        task_id = env_name
+        env_cls, policy_cls = SB3EnvWrapper, SB3LSTMPolicyWrapper
         validator = lambda x: x[0].policy_device != "cpu"
+
+    else:
+        task_id = env_name
+        env_cls, policy_cls = SB3EnvWrapper, SB3PolicyWrapper
+        validator = lambda x: x[0].policy_device != "cpu"        
 
     env_fns = [
         functools.partial(create_envs, env_cls, task_id, rank)
@@ -81,7 +80,7 @@ def trace_out_name(args, config):
 
 def run(args):
     env_fns, policy_cls, policy_kwargs, validator = prepare_task(args.env, args.num_envs)
-    tuner = make_naive_tuner(args, validator)
+    tuner = make_naive_tuner(args, None)
     executor = create_executor(env_fns, policy_cls, policy_kwargs, tuner, "shm")
 
     try:
@@ -103,7 +102,7 @@ if __name__ == "__main__":
     print(sys.version)
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--env", type=str)
+    parser.add_argument("--env", type=str, default="academy_3_vs_1_with_keeper")
 
     parser.add_argument(
         "--num-iteration", type=int, default=2, help="number of trials for each config."
@@ -114,7 +113,7 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
-        "--num-collect", type=int, default=4, help="number of trajectories to collect."
+        "--num-collect", type=int, default=20, help="number of trajectories to collect."
     )
 
     parser.add_argument(

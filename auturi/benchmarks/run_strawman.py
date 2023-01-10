@@ -3,12 +3,9 @@ import functools
 import os
 
 #from auturi.benchmarks.tasks.circuit_wrap import CircuitEnvWrapper, CircuitPolicyWrapper
-from auturi.benchmarks.tasks.football_wrap import (
-    FootballEnvWrapper,
-    FootballPolicyWrapper,
-    FootballScenarios, 
-)
-from auturi.benchmarks.tasks.sb3_wrap import SB3EnvWrapper, SB3PolicyWrapper
+from auturi.benchmarks.tasks.sb3_wrap import SB3EnvWrapper, SB3PolicyWrapper, SB3LSTMPolicyWrapper
+from auturi.benchmarks.tasks.sb3_wrap import is_atari
+
 from auturi.executor import create_executor
 from auturi.tuner import ActorConfig, ParallelizationConfig, create_tuner_with_config
 from auturi.tuner.greedy_tuner import GreedyTuner
@@ -61,21 +58,20 @@ def create_maximum_tuner(args):
 
 def prepare_task(env_name, num_envs):
     validator = None
-    if env_name in []:
-        task_id = env_name
-        env_cls, policy_cls = FootballEnvWrapper, FootballPolicyWrapper
-        validator = lambda x: x[0].policy_device != "cpu"
-
-    elif env_name == "circuit":
+    if env_name == "circuit":
         task_id = None
         env_cls, policy_cls = CircuitEnvWrapper, CircuitPolicyWrapper
         validator = lambda x: x[0].policy_device != "cpu"
 
-    else:
-        atari_name = "PongNoFrameskip-v4"
-        task_id = atari_name if env_name == "atari" else env_name
-        env_cls, policy_cls = SB3EnvWrapper, SB3PolicyWrapper
+    elif is_atari(env_name):
+        task_id = env_name
+        env_cls, policy_cls = SB3EnvWrapper, SB3LSTMPolicyWrapper
         validator = lambda x: x[0].policy_device != "cpu"
+
+    else:
+        task_id = env_name
+        env_cls, policy_cls = SB3EnvWrapper, SB3PolicyWrapper
+        validator = lambda x: x[0].policy_device != "cpu"        
 
     env_fns = [
         functools.partial(create_envs, env_cls, task_id, rank)

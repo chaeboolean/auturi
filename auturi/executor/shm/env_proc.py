@@ -1,6 +1,7 @@
 from typing import List
 
 import numpy as np
+import os
 
 import auturi.executor.typing as types
 from auturi.executor.environment import AuturiSerialEnv
@@ -69,14 +70,18 @@ class SHMEnvProc(SHMProcLoopMixin):
 
     def aggregate_handler(self, cmd: int, data_list: List[int]) -> None:
         local_rollouts = self.env.aggregate_rollouts()
+        _to_skip_obs_copy = os.getenv("ENV_SKIP_OBS_COPY", False)
 
         for key_, trajectories in local_rollouts.items():
+            if key_ == "obs" and _to_skip_obs_copy:
+                continue
             roll_buffer = self.rollout_buffers[key_][1]
 
             end_idx = min(len(roll_buffer), data_list[1])
             num_to_copy = end_idx - data_list[0]
             np.copyto(roll_buffer[data_list[0] : end_idx], trajectories[:num_to_copy])
 
+        self._logger.debug("AGGRE HANDER FINISH ---> ")
         self.reply(cmd)
 
 

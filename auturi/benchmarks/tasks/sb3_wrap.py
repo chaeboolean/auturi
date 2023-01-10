@@ -1,5 +1,5 @@
 from collections import defaultdict
-
+import os
 import gym
 import numpy as np
 import torch
@@ -10,6 +10,9 @@ from stable_baselines3.common.vec_env import (
     VecFrameStack,
     VecTransposeImage,
 )
+from sb3_contrib.ppo_recurrent.policies import CnnLstmPolicy
+from sb3_contrib.common.recurrent.type_aliases import RNNStates
+
 import pybullet_envs
 from traci.exceptions import FatalTraCIError
 
@@ -53,6 +56,8 @@ def is_atari(env_id: str) -> bool:
     except KeyError as e:
         return False
 
+def is_football(env_id: str) -> bool:
+    return env_id in football.scenarios
 
 class SB3EnvWrapper(AuturiEnv):
     def __init__(self, task_id: str, rank: int):
@@ -68,6 +73,9 @@ class SB3EnvWrapper(AuturiEnv):
         self.artifacts_samples = [np.array([[1.1, 1.4]])]
 
         #self._validate(self.observation_space, self.action_space)
+
+        if is_atari_ or is_football(task_id):
+            os.environ["ENV_SKIP_OBS_COPY"] = "1"
 
     def step(self, actions, artifacts):
         # if action.ndim == self.action_space.sample().ndim:
@@ -86,7 +94,7 @@ class SB3EnvWrapper(AuturiEnv):
 
 
         self.storage["obs"].append(obs)
-        self.storage["action"].append(action)
+        self.storage["action"].append(actions)
         self.storage["action_value"].append(artifacts[0])
         self.storage["reward"].append(reward)
         self.storage["done"].append(done)
@@ -153,6 +161,45 @@ class SB3PolicyWrapper(AuturiPolicy):
         torch.cuda.empty_cache()
 
 
-# task_id = "HalfCheetah-v3"
-# env = SB3EnvWrapper(task_id, rank=0)
-# policy = SB3PolicyWrapper(task_id, idx=0)
+class SB3LSTMPolicyWrapper(SB3PolicyWrapper):
+    def __init__(self, task_id: str, idx: int):
+        self.device = "cpu"
+        assert is_atari(task_id)
+        dummy_env = make_env(task_id, True)
+        policy_kwargs = dict(
+            observation_space=dummy_env.observation_space, 
+            action_space=dummy_env.action_space,
+            lr_schedule=lambda _: 0.001
+        )
+        self.policy = CnnLstmPolicy(**policy_kwargs)
+        self.policy.set_training_mode(False)
+        #self._validate(dummy_env.observation_space, dummy_env.action_space)
+
+        dummy_env.close()
+
+
+    def compute_actions(self, obs, n_steps):
+        obs = torch.from_numpy(obs).to(self.device)
+        batch_size = len(obs)
+        lstm = self.policy.lstm_actor
+        single_hidden_state_shape = (lstm.num_layers, batch_size, lstm.hidden_size)
+        lstm_states = RNNStates(
+            (
+                torch.zeros(single_hidden_state_shape).to(self.device),
+                torch.zeros(single_hidden_state_shape).to(self.device),
+            ),
+            (
+                torch.zeros(single_hidden_state_shape).to(self.device),
+                torch.zeros(single_hidden_state_shape).to(self.device),
+            ),
+        )
+        episode_starts = torch.tensor([False] * len(obs)).float().to(self.device)
+        actions, values, log_probs, lstm_states = self.policy.forward(obs, lstm_states, episode_starts)
+
+        actions = _to_cpu_numpy(actions)
+        artifacts = np.stack(
+            [_to_cpu_numpy(values).flatten(), _to_cpu_numpy(log_probs)], 1
+        )
+        actions = np.expand_dims(actions, -1)
+        return actions, [artifacts]
+
