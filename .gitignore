@@ -2,6 +2,7 @@
 auturi/.vscode
 logs/
 log/
+trace/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

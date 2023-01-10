@@ -29,5 +29,8 @@ def make_profiler():
                 for k, v in self.ts_dict.items():
                     f.write(f"{k}: {v}\n")
 
-    enable_profile = os.getenv("AUTURI_TASK_PROFILE", True)
+    # Set environment variable AUTURI_TASK_PROFILE to True
+    # in order to record 1E1P timesteps each
+    
+    enable_profile = os.getenv("AUTURI_TASK_PROFILE", False)
     return MyProfiler() if enable_profile else EmptyProfiler()

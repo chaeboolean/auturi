@@ -10,11 +10,14 @@ from stable_baselines3.common.vec_env import (
     VecFrameStack,
     VecTransposeImage,
 )
+import auturi.benchmarks.tasks.finrl_wrap as finrl
+import auturi.benchmarks.tasks.flow_wrap as flow 
+import auturi.benchmarks.tasks.football_kaggle as football
 
-from auturi.benchmarks.tasks.finrl_wrap import make_finrl_env
+
 from auturi.executor.environment import AuturiEnv
 from auturi.executor.policy import AuturiPolicy
-
+from functools import partial
 
 def make_env(task_id: str, is_atari_: bool):
     if is_atari_:
@@ -22,8 +25,14 @@ def make_env(task_id: str, is_atari_: bool):
         env = VecFrameStack(env, 4)
         return VecTransposeImage(env)
 
+    elif task_id in football._scenarios:
+        return DummyVecEnv([football.make_env(task_id)])
+
+    elif task_id in flow.scenarios:
+        return DummyVecEnv([flow.make_env(task_id)])
+
     elif task_id in ["stock", "portfolio"]:
-        return make_finrl_env(task_id)
+        return DummyVecEnv([partial(finrl.make_finrl_env, task_id) ])
 
     else:
         env_fn = lambda: gym.make(task_id)

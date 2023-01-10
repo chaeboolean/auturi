@@ -7,8 +7,8 @@ import numpy as np
 from typing import List
 from pathlib import Path
 
-PROC_PATH="/home/ooffordable/auturi/trace_tmp"
-RESULT_PATH="/home/ooffordable/auturi/trace/"
+PROC_PATH="/workspace/auturi/trace_tmp"
+RESULT_PATH="/workspace/auturi/trace/"
 
 def merge_file(out_dir, output_name):
     result_dir = Path(RESULT_PATH) / Path(out_dir)
@@ -141,7 +141,7 @@ class ChromeTraceRecorder:
 
     def dump_stats(self):
         """Flush all dumps into json file named ``file_name``, after which it clears its internal buffer."""
-
+        Path(PROC_PATH).mkdir(parents=True, exist_ok=True)
         file_name = os.path.join(PROC_PATH, self.proc_name) 
         with open(file_name + ".txt", "w") as f:
             f.write(f"{self._execution_cnt} {self._stop_loop_ts - self._start_loop_ts}\n")
@@ -159,7 +159,8 @@ class ChromeTraceRecorder:
         self.buffer.clear()
 
 
-def create_tracer(proc_name, to_trace: bool):
+def create_tracer(proc_name):
+    to_trace = os.getenv("AUTURI_TRACE", False)
     if to_trace:
         return ChromeTraceRecorder(proc_name)
     else:
