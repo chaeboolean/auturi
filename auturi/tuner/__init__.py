@@ -3,7 +3,7 @@ from auturi.tuner.config import ActorConfig, ParallelizationConfig
 from auturi.tuner.metric import AuturiMetric
 
 
-def create_tuner_with_config(num_envs: int, num_iterate: int, config: ParallelizationConfig):
+def create_tuner_with_config(num_envs: int, num_iterate: int, config: ParallelizationConfig, log_path, task_name):
     """Mock tuner that gives given config.
 
     Args:
@@ -28,7 +28,13 @@ def create_tuner_with_config(num_envs: int, num_iterate: int, config: Paralleliz
                 raise StopIteration()
 
         def _update_tuner(self, config, res):
-            self.tuning_results = res
+            self.tuning_results = [elem[0] for elem in res[0]]
+
+
+        def terminate_tuner(self):
+            with open(log_path, "a") as f:
+                f.write(f"{task_name}: {self.tuning_results}\n")
+                
 
     return _MockTuner()
 
