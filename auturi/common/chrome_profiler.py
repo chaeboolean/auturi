@@ -81,7 +81,7 @@ class EmptyTraceRecorder:
     def stop_loop(self):
         pass
 
-    def dump_stats(self, file_name: str):
+    def dump_stats(self):
         pass
 
     def clear(self):

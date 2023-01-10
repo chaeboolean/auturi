@@ -22,7 +22,7 @@ def _is_simple_loop(actor_config: ActorConfig):
         (actor_config.num_policy == 1)
         and (actor_config.batch_size == actor_config.num_envs)
         and (actor_config.num_parallel == 1)
-        and os.getenv("AUTURI_TRACE", None) is None # not profiling
+        and os.getenv("AUTURI_TRACE", False) is False # not profiling
     )
 
 
