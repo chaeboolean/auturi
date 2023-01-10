@@ -222,6 +222,7 @@ class SHMProcLoopMixin(SHMProcMixin, metaclass=ABCMeta):
         super().__init__(worker_id, cmd_attr_dict)
         self.cmd_handler[SHMCommand.INIT_LOOP] = self._loop_handler
         self._to_trace = os.getenv("AUTURI_TRACE", None)
+        self._loop_start = -1
 
     def initialize(self):
         super().initialize()
@@ -234,7 +235,7 @@ class SHMProcLoopMixin(SHMProcMixin, metaclass=ABCMeta):
 
     def _loop_handler(self, cmd: int, data_list: List[int]):
         """Execute this function from when INIT_LOOP is set until STOP_LOOP is set."""
-        self._trace_wrapper.clear()
+        self._trace_wrapper.start_loop()
         self._step_loop_once(is_first=True)
         while True:
             cmd, _ = self._get_command()
@@ -258,6 +259,7 @@ class SHMProcLoopMixin(SHMProcMixin, metaclass=ABCMeta):
 
     def _stop_loop_handler(self) -> None:
         """Handler function called when SHMCommand.STOP_LOOP is set."""
+        self._trace_wrapper.stop_loop()
         self.reply(cmd=SHMCommand.STOP_LOOP)
 
     @abstractmethod

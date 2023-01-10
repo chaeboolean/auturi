@@ -1,5 +1,6 @@
 from abc import ABCMeta, abstractmethod
 from typing import Any, Callable, Dict, List, Tuple
+import os
 
 from auturi.executor.environment import AuturiEnv
 from auturi.executor.loop import (
@@ -15,11 +16,13 @@ from auturi.tuner import ActorConfig, AuturiMetric, AuturiTuner, Parallelization
 logger = get_logger("Executor")
 
 
+# TODO: UNCOMMENT!!!!! 
 def _is_simple_loop(actor_config: ActorConfig):
     return (
         (actor_config.num_policy == 1)
         and (actor_config.batch_size == actor_config.num_envs)
         and (actor_config.num_parallel == 1)
+        and os.getenv("AUTURI_TRACE", None) is None # not profiling
     )
 
 

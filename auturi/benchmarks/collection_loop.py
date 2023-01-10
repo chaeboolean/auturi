@@ -77,7 +77,7 @@ def prepare_task(env_name, num_envs):
 def trace_out_name(args, config):
     config = config[0]
     config_str = f"ep={config.num_parallel}pp={config.num_policy}bs={config.batch_size}"
-    return f"{config_str}_{args.num_envs}_{args.env}"
+    return f"{args.env}_{args.num_envs}", config_str
 
 def run(args):
     env_fns, policy_cls, policy_kwargs, validator = prepare_task(args.env, args.num_envs)
@@ -93,8 +93,8 @@ def run(args):
         print(tuner.tuning_results)
 
     if args.trace:
-        output_name = trace_out_name(args, tuner.config)
-        merge_file(output_name)
+        out_dir, output_name = trace_out_name(args, tuner.config)
+        merge_file(out_dir, output_name)
         print(output_name)
         
 
