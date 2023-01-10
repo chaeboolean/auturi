@@ -1,4 +1,3 @@
-import time
 from typing import Callable
 
 import gym
@@ -35,14 +34,8 @@ class SB3PolicyAdapter(AuturiPolicy):
         self.sde_sample_freq = sde_sample_freq
         self.device = "cpu"
 
-        self.time_ms = []
-
     # Called at the beginning of collection loop
     def load_model(self, model, device="cpu"):
-        # if len(self.time_ms) > 0:
-        #     with open("policy.txt", "w") as f:
-        #         print(self.time_ms)
-        self.time_ms.clear()
         self.policy_model = self.policy_model_cls.load(self.model_path, device=device)
         self.policy_model.set_training_mode(False)
         self.device = device
@@ -55,8 +48,6 @@ class SB3PolicyAdapter(AuturiPolicy):
         )
 
     def compute_actions(self, env_obs, n_steps=3):
-        start_time = time.perf_counter()
-
         # Sample a new noise matrix
 
         if self._to_sample_noise(n_steps):
@@ -74,9 +65,6 @@ class SB3PolicyAdapter(AuturiPolicy):
         if isinstance(self.action_space, gym.spaces.Discrete):
             actions = np.expand_dims(actions, -1)
             
-        end_time = time.perf_counter()
-        self.time_ms.append(end_time - start_time)
-
         return actions, [artifacts]
 
     def terminate(self):

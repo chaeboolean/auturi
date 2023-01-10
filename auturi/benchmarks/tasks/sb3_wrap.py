@@ -11,7 +11,7 @@ from stable_baselines3.common.vec_env import (
     VecTransposeImage,
 )
 
-#from auturi.benchmarks.tasks.finrl_wrap import make_finrl_env
+from auturi.benchmarks.tasks.finrl_wrap import make_finrl_env
 from auturi.executor.environment import AuturiEnv
 from auturi.executor.policy import AuturiPolicy
 

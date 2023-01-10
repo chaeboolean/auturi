@@ -9,10 +9,14 @@ from finrl.meta.env_portfolio_allocation.env_portfolio import StockPortfolioEnv
 from finrl.meta.env_stock_trading.env_stocktrading import StockTradingEnv
 from finrl.meta.preprocessor.preprocessors import FeatureEngineer, data_split
 from finrl.meta.preprocessor.yahoodownloader import YahooDownloader
+from stable_baselines3.common.vec_env import DummyVecEnv
+
+from auturi.logger import get_logger
 
 SAVE_ASSET_PATH = pathlib.Path(__file__).parent.resolve() / "finrl_assets"
 pathlib.Path(SAVE_ASSET_PATH).mkdir(parents=True, exist_ok=True)
 
+logger = get_logger("")
 
 def get_stock_env():
     env_path = SAVE_ASSET_PATH / "finrl_stock.pkl"
@@ -22,6 +26,7 @@ def get_stock_env():
     TRADE_END_DATE = "2021-10-31"
 
     if env_path.exists():
+        logger.info(f"Found {env_path}. Do not create StockEnv")
         with open(env_path, "rb") as f:
             env = pickle.load(f)
             return env
@@ -75,7 +80,7 @@ def get_stock_env():
         "reward_scaling": 1e-4,
     }
 
-    env = StockTradingEnv(df=train, **env_kwargs).get_sb_env()[0]
+    env = StockTradingEnv(df=train, **env_kwargs)
     with open(env_path, "wb") as f:
         pickle.dump(env, f)
 
@@ -86,6 +91,8 @@ def get_portfolio_env():
     env_path = SAVE_ASSET_PATH / "finrl_portfolio.pkl"
 
     if env_path.exists():
+        logger.info(f"Found {env_path}. Do not create Portfolioenv")
+
         with open(env_path, "rb") as f:
             env = pickle.load(f)
             return env
@@ -147,15 +154,19 @@ def get_portfolio_env():
         "reward_scaling": 1e-1,
     }
 
-    env = StockPortfolioEnv(df=train, **env_kwargs).get_sb_env()[0]
+    env = StockPortfolioEnv(df=train, **env_kwargs)
     with open(env_path, "wb") as f:
         pickle.dump(env, f)
 
     return env
 
 
-def make_finrl_env(task_id):
-    if task_id == "stock":
-        return get_stock_env()
-    elif task_id == "portfolio":
+def make_finrl_env(task_id, dumb=None):
+    print(task_id)
+    if "stock" in task_id:
+        env = get_stock_env()
+        return env
+    elif "portfolio" in task_id:
         return get_portfolio_env()
+    else:
+        raise NotImplementedError

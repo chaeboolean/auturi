@@ -1,5 +1,3 @@
-import time
-
 import gym
 import numpy as np
 
@@ -47,7 +45,7 @@ class SB3LocalRolloutBuffer:
         self.storage["action_artifacts"].append(np.array([[value, log_prob]]))
         self.storage["has_terminal_obs"].append(np.array([terminal_obs is not None]))
 
-        terminal_obs = np.zeros_like(obs) if terminal_obs is None else terminal_obs
+        terminal_obs = np.zeros_like(obs) if terminal_obs is None else terminal_obs.reshape(obs.shape)
         self.storage["terminal_obs"].append(terminal_obs)
 
         self.counter += 1
@@ -63,7 +61,6 @@ class SB3LocalRolloutBuffer:
 class SB3EnvAdapter(AuturiEnv):
     def __init__(self, env_fn):
         self.env = env_fn()
-        print("~~~", type(self.env), self.env.reset().shape)
         self.setup_dummy_env(self.env)
         self.artifacts_samples = [np.array([[1.1, 1.4]])]
 
@@ -71,7 +68,6 @@ class SB3EnvAdapter(AuturiEnv):
         self._last_episode_starts = np.array([False])
 
         self.local_buffer = SB3LocalRolloutBuffer()
-        self.time_ms = []
 
     # Should explicitly call reset() before data collection.
     def reset(self):
@@ -82,9 +78,6 @@ class SB3EnvAdapter(AuturiEnv):
 
     def step(self, actions, action_artifacts):
         """Return only observation, which policy worker needs."""
-        print("Inside env: action=", actions.shape)
-
-        start_time = time.perf_counter()
         action = actions
         if isinstance(self.action_space, gym.spaces.Discrete):
             action = actions[0]
@@ -106,9 +99,8 @@ class SB3EnvAdapter(AuturiEnv):
             and info[0].get("terminal_observation", None) is not None
             and info[0].get("TimeLimit.truncated", False)
         ):
-            terminal_obs = info["terminal_observation"]
+            terminal_obs = info[0]["terminal_observation"]
 
-        print("*****" , action_artifacts[0].shape)
         values, log_probs = action_artifacts[0][0]
         self.local_buffer.add(
             self._last_obs,
@@ -123,17 +115,9 @@ class SB3EnvAdapter(AuturiEnv):
         self._last_obs = new_obs
         self._last_episode_starts = done
 
-        end_time = time.perf_counter()
-        self.time_ms.append(end_time - start_time)
-
         return new_obs
 
     def aggregate_rollouts(self):
-        # if len(self.time_ms) > 0:
-        #     with open("env.txt", "w"):
-        #         print(self.time_ms)
-
-        self.time_ms.clear()
         return self.local_buffer.get_local_rollouts()
 
     def terminate(self):

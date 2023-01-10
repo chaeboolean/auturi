@@ -1,11 +1,40 @@
+flow:
+  n_envs: 1
+  n_steps: 50
+  ent_coef: 0.01 
+  batch_size: 50
+  learning_rate: 0.00025
+  policy: 'MlpPolicy'
+  n_timesteps: 50000
+
+finrl-stock-trading:
+  n_envs: 1
+  n_steps: 2048 
+  ent_coef: 0.01 
+  batch_size: 128
+  learning_rate: 0.00025
+  policy: 'MlpPolicy'
+  n_timesteps: 50000
+
+
+finrl-portfolio-allocation:
+  n_envs: 1
+  n_steps: 2048 
+  ent_coef: 0.005
+  learning_rate: 0.001
+  batch_size: 128
+  policy: 'MlpPolicy'
+  n_timesteps: 40000
+
+
 # Tuned Hyperparameters
 # https://www.kaggle.com/code/kwabenantim/gfootball-stable-baselines3
 #
 football:
   policy: 'CnnPolicy'
   learning_rate: 0.000343
-  n_envs: 16
-  n_steps: 128 # 512 
+  n_envs: 4
+  n_steps: 512 
   batch_size: 8 
   n_epochs: 2 
   gamma: 0.993
@@ -18,15 +47,15 @@ football:
   policy_kwargs: "dict(features_extractor_class=football.FootballCNN, features_extractor_kwargs=dict(features_dim=256))"
 
 
-  atari:
+atari:
   env_wrapper:
     - stable_baselines3.common.atari_wrappers.AtariWrapper
   frame_stack: 4
   policy: 'CnnPolicy'
-  n_envs: 8
+  n_envs: 2
   n_steps: 128
   n_epochs: 4
-  batch_size: 256
+  batch_size: 128
   n_timesteps: !!float 1e7
   learning_rate: lin_2.5e-4
   clip_range: lin_0.1
@@ -399,7 +428,7 @@ Swimmer-v3:
 
 HalfCheetah-v3:
   normalize: true
-  n_envs: 1
+  n_envs: 2
   policy: 'MlpPolicy'
   n_timesteps: !!float 1e6
   batch_size: 64

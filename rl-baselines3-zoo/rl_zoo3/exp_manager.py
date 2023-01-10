@@ -13,6 +13,7 @@ import numpy as np
 import optuna
 import torch as th
 import yaml
+from functools import partial
 from huggingface_sb3 import EnvironmentName
 from optuna.pruners import BasePruner, MedianPruner, NopPruner, SuccessiveHalvingPruner
 from optuna.samplers import BaseSampler, RandomSampler, TPESampler
@@ -51,6 +52,8 @@ from rl_zoo3.utils import ALGOS, get_callback_list, get_latest_run_id, get_wrapp
 
 # Add football
 import auturi.benchmarks.tasks.football_kaggle as football
+import auturi.benchmarks.tasks.flow_wrap as flow
+import auturi.benchmarks.tasks.finrl_wrap as finrl
 
 class ExperimentManager:
     """
@@ -143,6 +146,8 @@ class ExperimentManager:
 
         self._is_atari = self.is_atari(env_id)
         self._is_football = env_id in football.scenarios
+        self._is_flow = env_id in flow.scenarios
+        
         # Hyperparameter optimization config
         self.optimize_hyperparameters = optimize_hyperparameters
         self.storage = storage
@@ -290,6 +295,8 @@ class ExperimentManager:
                 
             elif self._is_football:
                 hyperparams = hyperparams_dict["football"]
+            elif self._is_flow:
+                hyperparams = hyperparams_dict["flow"]
             else:
                 raise ValueError(f"Hyperparameters not found for {self.algo}-{self.env_name.gym_id}")
 
@@ -569,6 +576,14 @@ class ExperimentManager:
 
         if self._is_football:
             env_fns = [football.make_env(self.env_name, rank=i) for i in range(n_envs)]
+            env = self.vec_env_class(env_fns, **self.vec_env_kwargs)
+            
+        elif self._is_flow:
+            env_fns = [flow.make_env(self.env_name) for _ in range(n_envs)]
+            env = self.vec_env_class(env_fns, **self.vec_env_kwargs)
+
+        elif self.env_name.startswith("finrl"):
+            env_fns = [partial(finrl.make_finrl_env, self.env_name) for _ in range(n_envs)]
             env = self.vec_env_class(env_fns, **self.vec_env_kwargs)
 
         else:
